@@ -1,0 +1,98 @@
+scrChat As screen:
+    Fill: =RGBA(255, 255, 255, 1)
+
+    rectHeader3 As rectangle:
+        X: =0
+        Y: =0
+        Width: =1366
+        Height: =60
+        Fill: =RGBA(0, 120, 212, 1)
+
+    lblHeader3 As label:
+        X: =20
+        Y: =10
+        Width: =300
+        Height: =40
+        Text: ="AI Compliance Chat"
+        Size: =20
+        FontWeight: =FontWeight.Bold
+        Color: =RGBA(255, 255, 255, 1)
+
+    btnNavDashboard3 As button:
+        X: =900
+        Y: =10
+        Width: =140
+        Height: =40
+        Text: ="Dashboard"
+        Fill: =RGBA(0, 90, 158, 1)
+        Color: =RGBA(255, 255, 255, 1)
+        OnSelect: =Navigate(scrUpload)
+
+    btnNavControls3 As button:
+        X: =1050
+        Y: =10
+        Width: =140
+        Height: =40
+        Text: ="Controls"
+        Fill: =RGBA(0, 90, 158, 1)
+        Color: =RGBA(255, 255, 255, 1)
+        OnSelect: =Navigate(scrControls)
+
+    lblContextBanner As label:
+        X: =20
+        Y: =70
+        Width: =1326
+        Height: =35
+        Text: =If(!IsBlank(varChatContext), "✅ Assessment data loaded — AI responses will reference your results.", "⚠️ No assessment loaded — go to Dashboard screen first and paste your JSON.")
+        Size: =12
+        Fill: =If(!IsBlank(varChatContext), RGBA(223, 246, 221, 1), RGBA(255, 244, 206, 1))
+        Align: =Align.Center
+
+    rectGalChatPlaceholder As rectangle:
+        X: =100
+        Y: =115
+        Width: =1166
+        Height: =560
+        Fill: =RGBA(245, 245, 245, 1)
+        BorderColor: =RGBA(211, 211, 211, 1)
+        BorderThickness: =1
+
+    lblGalChatHint As label:
+        X: =110
+        Y: =370
+        Width: =1146
+        Height: =40
+        Text: ="DELETE this rectangle and hint label, then Insert a Blank Vertical Gallery here (see README Step 28)"
+        Size: =11
+        Color: =RGBA(169, 169, 169, 1)
+        Align: =Align.Center
+
+    txtMessage As text:
+        X: =100
+        Y: =685
+        Width: =1040
+        Height: =60
+        Mode: =TextMode.MultiLine
+        HintText: ="Ask about your ScubaGear results..."
+        Size: =13
+
+    btnSend As button:
+        X: =1150
+        Y: =685
+        Width: =116
+        Height: =60
+        Text: ="Send"
+        Fill: =RGBA(0, 120, 212, 1)
+        Color: =RGBA(255, 255, 255, 1)
+        Size: =14
+        OnSelect: |-
+            =Collect(colChatHistory, {role: "user", content: txtMessage.Text});
+            Set(
+                varChatResponse,
+                ScubaGearAnalyzerAPI.Chat({
+                    message: txtMessage.Text,
+                    assessmentContext: varChatContext
+                })
+            );
+            Collect(colChatHistory, {role: "assistant", content: varChatResponse.response});
+            Reset(txtMessage)

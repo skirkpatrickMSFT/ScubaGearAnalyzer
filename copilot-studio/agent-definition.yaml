@@ -1,0 +1,241 @@
+# Copilot Studio Agent — Exported Configuration
+# This YAML defines the agent's topics and actions for reference.
+# Import the OpenAPI connector first, then recreate topics in Copilot Studio.
+
+agent:
+  name: ScubaGear Analyzer
+  description: >-
+    CISA ScubaGear compliance assistant for Microsoft 365.
+    Analyses baseline assessment results and provides AI-powered
+    remediation guidance grounded in CISA baselines and Microsoft Learn.
+  icon: shield-check
+  language: en-US
+
+  instructions: |
+    You are ScubaGear Analyzer, a CISA ScubaGear compliance assistant.
+    You help security teams understand, analyse, and remediate the baseline
+    controls defined by CISA for Microsoft 365.
+
+    You have access to these capabilities via connector actions:
+    1. GetControlInfo — Look up baseline control details by ID
+    2. ListControls — List all controls, optionally by section
+    3. GetRemediation — Get remediation steps for a specific control
+    4. SearchBaseline — Search controls by keyword
+    5. GetSectionSummary — Summarize a baseline section
+    6. SearchLearn — Search Microsoft Learn documentation
+    7. GetControlDocs — Get Learn docs mapped to a control
+    8. ParseResults — Parse uploaded ScubaGear JSON results
+    9. Chat — Full AI-powered analysis with tool calling
+
+    When users mention controls in shorthand:
+    - "entra 3.1" or "aad 3.1" → MS.AAD.3.1v1
+    - "defender 1.4" → MS.DEFENDER.1.4v1
+    - "exo 4.3" → MS.EXO.4.3v1
+    - "sharepoint 1.1" → MS.SHAREPOINT.1.1v1
+    - "teams 2.1" → MS.TEAMS.2.1v2
+    - "powerplatform 1.1" → MS.POWERPLATFORM.1.1v1
+
+    Always normalize to MS.PRODUCT.X.Xv1 format before calling actions.
+
+    Response guidelines:
+    - Ground answers in baseline data and Microsoft Learn documentation
+    - When discussing failures: explain requirement → explain failure → provide remediation
+    - Use Markdown formatting with headings, bullet lists, and tables
+    - Include admin portal navigation paths in remediation steps
+    - For controls marked "Not-Implemented" or "3rd Party", explain manual checks needed
+
+  connector:
+    name: ScubaGear Analyzer API
+    type: custom
+    openApiSpec: ../azure-functions/openapi.json
+    authentication:
+      type: apiKey
+      keyName: x-functions-key
+      in: header
+
+  actions:
+    - operationId: GetControlInfo
+      description: Look up detailed info about a CISA ScubaGear baseline control
+      inputMapping:
+        controlId: Extract from user message, normalize to MS.PRODUCT.X.Xv1
+
+    - operationId: ListControls
+      description: List all baseline controls, optionally by section
+      inputMapping:
+        section: Extract section number if mentioned (1-8)
+
+    - operationId: GetRemediation
+      description: Get step-by-step remediation for a control
+      inputMapping:
+        controlId: Extract from user message, normalize to MS.PRODUCT.X.Xv1
+
+    - operationId: SearchBaseline
+      description: Search controls by keyword or topic
+      inputMapping:
+        query: Use the user's search terms
+
+    - operationId: GetSectionSummary
+      description: Get a summary of a baseline section
+      inputMapping:
+        number: Extract section number from user message
+
+    - operationId: SearchLearn
+      description: Search Microsoft Learn for documentation
+      inputMapping:
+        query: Use the user's question as search terms
+
+    - operationId: GetControlDocs
+      description: Get Learn documentation URLs for a specific control
+      inputMapping:
+        controlId: Extract from user message
+
+    - operationId: ParseResults
+      description: Parse ScubaGear assessment JSON and return structured data
+      inputMapping:
+        body: The JSON content provided by the user
+
+    - operationId: Chat
+      description: >-
+        Full AI-powered chat for complex questions. Use when the user asks
+        something that requires reasoning across multiple controls, comparing
+        results, or synthesizing information from multiple sources.
+      inputMapping:
+        message: The user's message
+        assessmentContext: The chatContext from a previous ParseResults call
+
+  topics:
+    - name: Greeting
+      triggerPhrases:
+        - hello
+        - hi
+        - help
+        - what can you do
+      response: |
+        Welcome to **ScubaGear Analyzer**! I can help you with:
+
+        📋 **Analyse Results** — Upload your ScubaGear TestResults.json for a compliance dashboard
+        🔍 **Control Lookup** — Get details on any CISA baseline control (e.g., "What is MS.AAD.3.1v1?")
+        🛠️ **Remediation** — Step-by-step fix instructions for failing controls
+        📚 **Documentation** — Search Microsoft Learn for implementation guides
+        📊 **Section Overview** — View summaries of baseline sections 1-8
+
+        How can I help you today?
+
+    - name: AnalyseResults
+      triggerPhrases:
+        - analyse my results
+        - parse my scubagear
+        - upload results
+        - check my compliance
+        - scan results
+      steps:
+        - type: message
+          text: Please paste your ScubaGear JSON results (TestResults.json or ScubaResults JSON).
+        - type: action
+          operationId: ParseResults
+          input: userInput
+        - type: message
+          text: |
+            ## Assessment Summary
+
+            | Metric | Count |
+            |--------|-------|
+            | Total Controls | {summary.total} |
+            | ✅ Pass | {summary.pass} |
+            | ❌ Fail | {summary.fail} |
+            | 📋 Manual | {summary.manual} |
+            | Overall Pass Rate | {summary.overallPassRate}% |
+
+            Would you like to see the product breakdown or drill into specific failures?
+
+    - name: ControlLookup
+      triggerPhrases:
+        - what is control
+        - tell me about
+        - look up control
+        - describe control
+        - control info
+      steps:
+        - type: action
+          operationId: GetControlInfo
+        - type: message
+          text: |
+            ## {id}
+
+            **{title}**
+
+            | Property | Value |
+            |----------|-------|
+            | Criticality | {criticality} |
+            | Check Type | {checkType} |
+            | BOD 25-01 | {bod2501} |
+            | Section | {sectionNumber}. {section} |
+
+            **Description:** {description}
+
+            **Rationale:** {rationale}
+
+            ---
+            Would you like remediation steps for this control?
+
+    - name: RemediationHelp
+      triggerPhrases:
+        - how do I fix
+        - remediate
+        - fix control
+        - implementation steps
+        - how to resolve
+      steps:
+        - type: action
+          operationId: GetRemediation
+        - type: action
+          operationId: GetControlDocs
+        - type: message
+          text: |
+            ## Remediation: {controlId}
+
+            **{title}**
+
+            ### Why This Matters
+            {rationale}
+
+            ### Implementation Steps
+            {implementation}
+
+            ### License Requirements
+            {licenseRequirements}
+
+            ### Microsoft Learn References
+            {docs}
+
+    - name: SectionOverview
+      triggerPhrases:
+        - show me section
+        - section summary
+        - what's in section
+        - list section
+      steps:
+        - type: action
+          operationId: GetSectionSummary
+        - type: message
+          text: |
+            ## Section {sectionNumber}: {sectionName}
+
+            | Metric | Count |
+            |--------|-------|
+            | Total Controls | {totalControls} |
+            | SHALL/SHALL NOT | {shallCount} |
+            | SHOULD/SHOULD NOT | {shouldCount} |
+            | Automated | {automatedChecks} |
+            | BOD 25-01 | {bod2501Count} |
+
+    - name: Fallback
+      triggerPhrases: []
+      isSystemFallback: true
+      steps:
+        - type: action
+          operationId: Chat
+          input:
+            message: "{userMessage}"
+        - type: message
+          text: "{response}"

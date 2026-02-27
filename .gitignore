@@ -1,0 +1,23 @@
+# Dependencies
+**/node_modules/
+
+# Build outputs
+**/dist/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+Thumbs.db
+.DS_Store
+
+# PowerApps build artifacts (keep source, ignore binary)
+power-apps/ScubaGearAnalyzer.msapp
+power-apps/base-app.msapp
+
+# Package output
+release/
+*.zip

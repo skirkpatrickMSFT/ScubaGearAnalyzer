@@ -1,0 +1,14 @@
+{
+  "AuthoringToolVersion": "0.24",
+  "DocumentUri": null,
+  "DocumentType": "App",
+  "AppPreviewFlagsKey": [],
+  "Name": "ScubaGear Analyzer",
+  "Id": "00000000-0000-0000-0000-000000000001",
+  "DocumentLayoutWidth": 1366,
+  "DocumentLayoutHeight": 768,
+  "DocumentAppType": "DesktopOrTablet",
+  "DefaultConnectedDataSourceMaxGetRowsCount": 500,
+  "ContainsThirdPartyPcfControls": false,
+  "InstrumentationKey": ""
+}

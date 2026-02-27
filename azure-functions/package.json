@@ -1,0 +1,23 @@
+{
+  "name": "scubagear-analyzer-functions",
+  "version": "1.0.0",
+  "description": "Azure Functions backend for ScubaGear Analyzer — powers Power Apps + Copilot Studio agent",
+  "main": "dist/src/functions/*.js",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w",
+    "clean": "rimraf dist",
+    "prestart": "npm run build",
+    "start": "func start",
+    "test": "echo \"No tests yet\" && exit 0"
+  },
+  "dependencies": {
+    "@azure/functions": "^4.5.0",
+    "openai": "^4.58.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "rimraf": "^5.0.0",
+    "typescript": "^5.5.0"
+  }
+}

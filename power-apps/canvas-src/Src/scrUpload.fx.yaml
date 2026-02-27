@@ -1,0 +1,264 @@
+scrUpload As screen:
+    Fill: =RGBA(255, 255, 255, 1)
+
+    rectHeader As rectangle:
+        X: =0
+        Y: =0
+        Width: =1366
+        Height: =60
+        Fill: =RGBA(0, 120, 212, 1)
+
+    lblTitle As label:
+        X: =20
+        Y: =10
+        Width: =400
+        Height: =40
+        Text: ="ScubaGear Analyzer"
+        Size: =20
+        FontWeight: =FontWeight.Bold
+        Color: =RGBA(255, 255, 255, 1)
+
+    txtJsonInput As text:
+        X: =20
+        Y: =80
+        Width: =660
+        Height: =300
+        Mode: =TextMode.MultiLine
+        HintText: ="Paste your ScubaGear TestResults.json content here..."
+        Size: =11
+
+    btnParse As button:
+        X: =20
+        Y: =390
+        Width: =200
+        Height: =40
+        Text: ="Analyse Results"
+        OnSelect: |-
+            =Set(
+                varResults,
+                ScubaGearAnalyzerAPI.ParseResults(
+                    ParseJSON(txtJsonInput.Text)
+                )
+            );
+            ClearCollect(colProducts, varResults.productBreakdown);
+            ClearCollect(colControls, varResults.controls);
+            Set(varChatContext, varResults.chatContext);
+            Set(varIsLoaded, true)
+
+    rectCardTotal As rectangle:
+        X: =20
+        Y: =450
+        Width: =150
+        Height: =90
+        Fill: =RGBA(255, 255, 255, 1)
+        BorderColor: =RGBA(211, 211, 211, 1)
+        BorderThickness: =1
+
+    lblCardTotalTitle As label:
+        X: =30
+        Y: =455
+        Width: =130
+        Height: =25
+        Text: ="Total"
+        Size: =12
+        Color: =RGBA(0, 0, 139, 1)
+
+    lblCardTotalValue As label:
+        X: =30
+        Y: =480
+        Width: =130
+        Height: =50
+        Text: =If(varIsLoaded, Text(varResults.summary.total), "—")
+        Size: =28
+        FontWeight: =FontWeight.Bold
+        Color: =RGBA(0, 0, 139, 1)
+
+    rectCardPass As rectangle:
+        X: =180
+        Y: =450
+        Width: =150
+        Height: =90
+        Fill: =RGBA(255, 255, 255, 1)
+        BorderColor: =RGBA(211, 211, 211, 1)
+        BorderThickness: =1
+
+    lblCardPassTitle As label:
+        X: =190
+        Y: =455
+        Width: =130
+        Height: =25
+        Text: ="Pass"
+        Size: =12
+        Color: =RGBA(16, 124, 16, 1)
+
+    lblCardPassValue As label:
+        X: =190
+        Y: =480
+        Width: =130
+        Height: =50
+        Text: =If(varIsLoaded, Text(varResults.summary.pass), "—")
+        Size: =28
+        FontWeight: =FontWeight.Bold
+        Color: =RGBA(16, 124, 16, 1)
+
+    rectCardFail As rectangle:
+        X: =340
+        Y: =450
+        Width: =150
+        Height: =90
+        Fill: =RGBA(255, 255, 255, 1)
+        BorderColor: =RGBA(211, 211, 211, 1)
+        BorderThickness: =1
+
+    lblCardFailTitle As label:
+        X: =350
+        Y: =455
+        Width: =130
+        Height: =25
+        Text: ="Fail"
+        Size: =12
+        Color: =RGBA(209, 52, 56, 1)
+
+    lblCardFailValue As label:
+        X: =350
+        Y: =480
+        Width: =130
+        Height: =50
+        Text: =If(varIsLoaded, Text(varResults.summary.fail), "—")
+        Size: =28
+        FontWeight: =FontWeight.Bold
+        Color: =RGBA(209, 52, 56, 1)
+
+    rectCardManual As rectangle:
+        X: =500
+        Y: =450
+        Width: =150
+        Height: =90
+        Fill: =RGBA(255, 255, 255, 1)
+        BorderColor: =RGBA(211, 211, 211, 1)
+        BorderThickness: =1
+
+    lblCardManualTitle As label:
+        X: =510
+        Y: =455
+        Width: =130
+        Height: =25
+        Text: ="Manual"
+        Size: =12
+        Color: =RGBA(255, 140, 0, 1)
+
+    lblCardManualValue As label:
+        X: =510
+        Y: =480
+        Width: =130
+        Height: =50
+        Text: =If(varIsLoaded, Text(varResults.summary.manual), "—")
+        Size: =28
+        FontWeight: =FontWeight.Bold
+        Color: =RGBA(255, 140, 0, 1)
+
+    rectCardRate As rectangle:
+        X: =660
+        Y: =450
+        Width: =150
+        Height: =90
+        Fill: =RGBA(255, 255, 255, 1)
+        BorderColor: =RGBA(211, 211, 211, 1)
+        BorderThickness: =1
+
+    lblCardRateTitle As label:
+        X: =670
+        Y: =455
+        Width: =130
+        Height: =25
+        Text: ="Pass Rate"
+        Size: =12
+        Color: =RGBA(0, 0, 139, 1)
+
+    lblCardRateValue As label:
+        X: =670
+        Y: =480
+        Width: =130
+        Height: =50
+        Text: =If(varIsLoaded, Text(varResults.summary.overallPassRate) & "%", "—")
+        Size: =28
+        FontWeight: =FontWeight.Bold
+        Color: =If(varIsLoaded && varResults.summary.overallPassRate >= 80, RGBA(16, 124, 16, 1), RGBA(209, 52, 56, 1))
+
+    rectGauge As rectangle:
+        X: =700
+        Y: =80
+        Width: =300
+        Height: =300
+        Fill: =RGBA(255, 255, 255, 1)
+        BorderColor: =RGBA(211, 211, 211, 1)
+        BorderThickness: =1
+
+    lblGaugeTitle As label:
+        X: =720
+        Y: =100
+        Width: =260
+        Height: =30
+        Text: ="Overall Pass Rate"
+        Align: =Align.Center
+        Size: =14
+
+    lblGaugeValue As label:
+        X: =720
+        Y: =160
+        Width: =260
+        Height: =80
+        Text: =If(varIsLoaded, Text(varResults.summary.overallPassRate) & "%", "—")
+        Align: =Align.Center
+        Size: =48
+        FontWeight: =FontWeight.Bold
+        Color: =If(varIsLoaded && varResults.summary.overallPassRate >= 80, RGBA(16, 124, 16, 1), varIsLoaded && varResults.summary.overallPassRate >= 50, RGBA(255, 140, 0, 1), RGBA(209, 52, 56, 1))
+
+    lblGaugeSubtitle As label:
+        X: =720
+        Y: =250
+        Width: =260
+        Height: =30
+        Text: =If(varIsLoaded, Text(varResults.summary.pass) & " of " & Text(varResults.summary.total) & " controls passing", "")
+        Align: =Align.Center
+        Size: =12
+        Color: =RGBA(169, 169, 169, 1)
+
+    rectGalProductsPlaceholder As rectangle:
+        X: =20
+        Y: =560
+        Width: =800
+        Height: =180
+        Fill: =RGBA(245, 245, 245, 1)
+        BorderColor: =RGBA(211, 211, 211, 1)
+        BorderThickness: =1
+
+    lblGalProductsHint As label:
+        X: =30
+        Y: =620
+        Width: =780
+        Height: =40
+        Text: ="DELETE this rectangle and the hint label, then Insert a Blank Vertical Gallery here (see README Step 11)"
+        Size: =11
+        Color: =RGBA(169, 169, 169, 1)
+        Align: =Align.Center
+
+    btnNavControls As button:
+        X: =1050
+        Y: =10
+        Width: =140
+        Height: =40
+        Text: ="Controls"
+        Fill: =RGBA(0, 90, 158, 1)
+        Color: =RGBA(255, 255, 255, 1)
+        OnSelect: =Navigate(scrControls)
+
+    btnNavChat As button:
+        X: =1200
+        Y: =10
+        Width: =140
+        Height: =40
+        Text: ="Chat"
+        Fill: =RGBA(0, 90, 158, 1)
+        Color: =RGBA(255, 255, 255, 1)
+        OnSelect: =Navigate(scrChat)

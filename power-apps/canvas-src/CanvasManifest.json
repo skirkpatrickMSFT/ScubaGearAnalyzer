@@ -1,0 +1,20 @@
+{
+  "FormatVersion": "0.24",
+  "Properties": {
+    "Name": "ScubaGear Analyzer",
+    "Id": "00000000-0000-0000-0000-000000000001",
+    "LocalConnectionReferences": "{}",
+    "DocumentLayoutWidth": 1366,
+    "DocumentLayoutHeight": 768,
+    "DocumentLayoutOrientation": "landscape",
+    "DocumentLayoutScaleToFit": true,
+    "DocumentLayoutMaintainAspectRatio": true,
+    "DocumentLayoutLockOrientation": false,
+    "DocumentAppType": "DesktopOrTablet",
+    "DocumentType": "App",
+    "LibraryDependencies": "[]"
+  },
+  "PublishInfo": {
+    "AppName": "ScubaGear Analyzer"
+  }
+}

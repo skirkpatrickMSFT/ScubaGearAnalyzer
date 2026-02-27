@@ -1,0 +1,9 @@
+{
+  "TopParent": {
+    "Name": "scrChat",
+    "IsComponentDefinition": false,
+    "Type": "ControlInfo",
+    "Children": [],
+    "Rules": []
+  }
+}
