@@ -1,7 +1,8 @@
 // ============================================================
 // ScubaGear Analyzer — Azure Functions Infrastructure
-// Deploys Azure Function App + Storage for the Power Platform
-// backend (custom connector + Copilot Studio agent).
+// Deploys Azure Function App (Flex Consumption) + Storage
+// for the Power Platform backend (custom connector + Copilot
+// Studio agent).
 // ============================================================
 
 targetScope = 'resourceGroup'
@@ -28,6 +29,7 @@ var functionAppName = '${baseName}-func-${uniqueSuffix}'
 var storageName = replace('${baseName}st${uniqueSuffix}', '-', '')
 var appServicePlanName = '${baseName}-plan-${uniqueSuffix}'
 var appInsightsName = '${baseName}-ai-${uniqueSuffix}'
+var storageConnectionString = 'DefaultEndpointsProtocol=https;AccountName=${storageAccount.name};EndpointSuffix=${environment().suffixes.storage};AccountKey=${storageAccount.listKeys().keys[0].value}'
 
 // ── Storage Account (required by Azure Functions) ──────────
 
@@ -43,6 +45,20 @@ resource storageAccount 'Microsoft.Storage/storageAccounts@2023-05-01' = {
   tags: {
     project: 'ScubaGearAnalyzer'
     component: 'functions-storage'
+  }
+}
+
+// Blob container for Flex Consumption deployment packages
+resource blobServices 'Microsoft.Storage/storageAccounts/blobServices@2023-05-01' = {
+  parent: storageAccount
+  name: 'default'
+}
+
+resource deploymentContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-05-01' = {
+  parent: blobServices
+  name: 'deploymentpackage'
+  properties: {
+    publicAccess: 'None'
   }
 }
 
@@ -62,17 +78,14 @@ resource appInsights 'Microsoft.Insights/components@2020-02-02' = {
   }
 }
 
-// ── App Service Plan (Consumption) ─────────────────────────
+// ── App Service Plan (Flex Consumption) ────────────────────
 
-resource appServicePlan 'Microsoft.Web/serverfarms@2023-12-01' = {
+resource appServicePlan 'Microsoft.Web/serverfarms@2024-04-01' = {
   name: appServicePlanName
   location: location
   sku: {
-    name: 'Y1'
-    tier: 'Dynamic'
-    size: 'Y1'
-    family: 'Y'
-    capacity: 0
+    name: 'FC1'
+    tier: 'FlexConsumption'
   }
   kind: 'functionapp'
   properties: {
@@ -84,41 +97,48 @@ resource appServicePlan 'Microsoft.Web/serverfarms@2023-12-01' = {
   }
 }
 
-// ── Function App ───────────────────────────────────────────
+// ── Function App (Flex Consumption) ────────────────────────
 
-resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
+resource functionApp 'Microsoft.Web/sites@2024-04-01' = {
   name: functionAppName
   location: location
   kind: 'functionapp,linux'
   properties: {
     serverFarmId: appServicePlan.id
     httpsOnly: true
+    functionAppConfig: {
+      deployment: {
+        storage: {
+          type: 'blobContainer'
+          value: '${storageAccount.properties.primaryEndpoints.blob}deploymentpackage'
+          authentication: {
+            type: 'StorageAccountConnectionString'
+            storageAccountConnectionStringName: 'DEPLOYMENT_STORAGE_CONNECTION_STRING'
+          }
+        }
+      }
+      scaleAndConcurrency: {
+        maximumInstanceCount: 100
+        instanceMemoryMB: 2048
+      }
+      runtime: {
+        name: 'node'
+        version: '22'
+      }
+    }
     siteConfig: {
-      linuxFxVersion: 'NODE|20'
       appSettings: [
         {
           name: 'AzureWebJobsStorage'
-          value: 'DefaultEndpointsProtocol=https;AccountName=${storageAccount.name};EndpointSuffix=${environment().suffixes.storage};AccountKey=${storageAccount.listKeys().keys[0].value}'
+          value: storageConnectionString
         }
         {
-          name: 'WEBSITE_CONTENTAZUREFILECONNECTIONSTRING'
-          value: 'DefaultEndpointsProtocol=https;AccountName=${storageAccount.name};EndpointSuffix=${environment().suffixes.storage};AccountKey=${storageAccount.listKeys().keys[0].value}'
-        }
-        {
-          name: 'WEBSITE_CONTENTSHARE'
-          value: functionAppName
+          name: 'DEPLOYMENT_STORAGE_CONNECTION_STRING'
+          value: storageConnectionString
         }
         {
           name: 'FUNCTIONS_EXTENSION_VERSION'
           value: '~4'
-        }
-        {
-          name: 'FUNCTIONS_WORKER_RUNTIME'
-          value: 'node'
-        }
-        {
-          name: 'WEBSITE_NODE_DEFAULT_VERSION'
-          value: '~20'
         }
         {
           name: 'APPINSIGHTS_INSTRUMENTATIONKEY'
@@ -144,6 +164,9 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
       }
     }
   }
+  dependsOn: [
+    deploymentContainer
+  ]
   tags: {
     project: 'ScubaGearAnalyzer'
     component: 'functions'

@@ -54,7 +54,7 @@ if (-not (Get-Command func -ErrorAction SilentlyContinue)) {
 }
 
 if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
-    throw "Node.js not found. Please install Node.js 20+."
+    throw "Node.js not found. Please install Node.js 22+."
 }
 
 # ── OpenAI Key ──────────────────────────────────────────────
