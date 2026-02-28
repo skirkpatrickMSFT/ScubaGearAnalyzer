@@ -7,15 +7,15 @@ backed by **Azure Functions**, with an optional **Copilot Studio** AI agent.
 
 ```
 ┌─────────────────────────────────────────────────┐
-│              Power Platform                      │
+│              Power Platform                     │
 │  ┌──────────────┐    ┌────────────────────┐     │
-│  │  Power Apps   │    │  Copilot Studio    │     │
-│  │  Canvas App   │    │  Agent (optional)  │     │
-│  │  (Dashboard)  │    │  (AI Chat)         │     │
+│  │  Power Apps  │    │  Copilot Studio    │     │
+│  │  Canvas App  │    │  Agent (optional)  │     │
+│  │  (Dashboard) │    │  (AI Chat)         │     │
 │  └──────┬───────┘    └────────┬───────────┘     │
-│         │                     │                  │
-│         └──────┬──────────────┘                  │
-│                │                                 │
+│         │                     │                 │
+│         └──────┬──────────────┘                 │
+│                │                                │
 │     ┌──────────▼──────────┐                     │
 │     │  Custom Connector   │                     │
 │     │  (OpenAPI spec)     │                     │
@@ -23,7 +23,7 @@ backed by **Azure Functions**, with an optional **Copilot Studio** AI agent.
 └────────────────┼────────────────────────────────┘
                  │ HTTPS + API Key
 ┌────────────────▼────────────────────────────────┐
-│           Azure Functions                        │
+│           Azure Functions                       │
 │  ┌────────────────────────────────────────────┐ │
 │  │ /api/baseline/*   — CISA baseline data     │ │
 │  │ /api/learn/*      — Microsoft Learn proxy  │ │
