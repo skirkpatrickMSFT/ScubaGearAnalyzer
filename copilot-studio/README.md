@@ -1,12 +1,17 @@
 # Copilot Studio Agent Definition — ScubaGear Analyzer
 
+> **This component is optional.** The Power Apps canvas app includes a built-in
+> Chat screen that calls the Azure Functions `/api/chat` endpoint directly.
+> Use Copilot Studio only if you want an additional conversational interface
+> (e.g., a standalone Teams bot or embedded agent).
+
 This folder contains the configuration and setup instructions for creating
 the **ScubaGear Analyzer** agent in Microsoft Copilot Studio.
 
 ## Overview
 
-The Copilot Studio agent wraps the Azure Functions backend and provides a
-conversational interface for security teams to:
+The Copilot Studio agent wraps the Azure Functions backend and provides an
+**alternative** conversational interface for security teams to:
 
 - Analyse ScubaGear compliance results
 - Look up CISA baseline control details
@@ -71,6 +76,8 @@ You have access to these capabilities via connector actions:
 7. GetControlDocs — Get Learn docs mapped to a control
 8. ParseResults — Parse uploaded ScubaGear JSON results
 9. Chat — Full AI-powered analysis with tool calling
+10. ListBlobs — Browse JSON files in Azure Blob Storage
+11. FetchBlob — Load and parse a blob from storage
 
 When users mention controls in shorthand:
 - "entra 3.1" or "aad 3.1" → MS.AAD.3.1v1
@@ -105,6 +112,8 @@ Response guidelines:
 | `GetControlDocs` | User wants Learn docs for a specific control |
 | `ParseResults` | User uploads ScubaGear results for analysis |
 | `Chat` | User asks a complex question requiring AI reasoning |
+| `ListBlobs` | User wants to browse result files in Azure Blob Storage |
+| `FetchBlob` | User wants to load and parse a specific blob from storage |
 
 4. For each tool, configure the **Input descriptions** so the agent knows
    when to call them.
@@ -168,13 +177,15 @@ User (Power Apps / Teams / Copilot Studio)
     ↓
 Copilot Studio Agent
     ↓  (calls connector actions)
-Custom Connector (OpenAPI)
+Custom Connector (APIScubaGearAnalyzer)
     ↓  (HTTP + function key)
-Azure Functions
-    ├── /baseline/*     — CISA baseline data (in-memory)
-    ├── /learn/*        — Microsoft Learn API proxy
-    ├── /parse-results  — ScubaGear JSON parser
-    └── /chat           — GPT-4o orchestration with tool calling
+Azure Functions (Flex Consumption / Node.js 22)
+    ├── /baseline/*        — CISA baseline data (in-memory)
+    ├── /learn/*           — Microsoft Learn API proxy
+    ├── /parse-results     — ScubaGear JSON parser
+    ├── /storage/list-blobs— Browse Azure Blob Storage
+    ├── /storage/fetch-blob— Load & parse blob from storage
+    └── /chat              — GPT-4o orchestration with tool calling
 ```
 
 ---

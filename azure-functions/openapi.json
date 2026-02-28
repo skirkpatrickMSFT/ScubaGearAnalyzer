@@ -1,7 +1,7 @@
 {
   "swagger": "2.0",
   "info": {
-    "title": "ScubaGear Analyzer API",
+    "title": "APIScubaGearAnalyzer",
     "description": "CISA ScubaGear compliance analysis API. Provides baseline control lookups, Microsoft Learn documentation, ScubaGear results parsing, and AI-powered remediation chat.",
     "version": "1.0.0",
     "contact": {
@@ -304,6 +304,86 @@
           }
         }
       }
+    },
+    "/storage/list-blobs": {
+      "get": {
+        "operationId": "ListBlobs",
+        "summary": "List blobs in storage",
+        "description": "Lists JSON result files in a ScubaConnect Azure Blob Storage container. Used to browse available ScubaGear results for loading.",
+        "parameters": [
+          {
+            "name": "storageAccountName",
+            "in": "query",
+            "required": true,
+            "type": "string",
+            "description": "Azure Storage account name"
+          },
+          {
+            "name": "containerName",
+            "in": "query",
+            "required": true,
+            "type": "string",
+            "description": "Blob container name"
+          },
+          {
+            "name": "sasToken",
+            "in": "query",
+            "required": true,
+            "type": "string",
+            "description": "Shared Access Signature (SAS) token for container access"
+          },
+          {
+            "name": "prefix",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "description": "Blob name prefix filter (e.g. '2026/02/')"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of JSON blobs",
+            "schema": { "$ref": "#/definitions/BlobListResponse" }
+          },
+          "400": { "description": "Missing required parameters" },
+          "403": { "description": "SAS token invalid or expired" },
+          "404": { "description": "Container not found" }
+        }
+      }
+    },
+    "/storage/fetch-blob": {
+      "post": {
+        "operationId": "FetchBlob",
+        "summary": "Fetch and parse a blob",
+        "description": "Fetches a ScubaGear JSON result file from Azure Blob Storage, parses it, and returns structured compliance data (same format as ParseResults).",
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "description": "Storage connection details and blob path",
+            "schema": {
+              "type": "object",
+              "required": ["storageAccountName", "containerName", "sasToken", "blobName"],
+              "properties": {
+                "storageAccountName": { "type": "string", "description": "Azure Storage account name" },
+                "containerName": { "type": "string", "description": "Blob container name" },
+                "sasToken": { "type": "string", "description": "Shared Access Signature (SAS) token" },
+                "blobName": { "type": "string", "description": "Full blob name/path (e.g. '2026/02/27/ScubaResults.json')" }
+              }
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Parsed compliance data from blob",
+            "schema": { "$ref": "#/definitions/ParsedResults" }
+          },
+          "400": { "description": "Missing fields or unparseable JSON" },
+          "403": { "description": "SAS token invalid or expired" },
+          "404": { "description": "Blob not found" }
+        }
+      }
     }
   },
   "definitions": {
@@ -383,6 +463,26 @@
         "url": { "type": "string" },
         "content": { "type": "string" },
         "lastUpdated": { "type": "string" }
+      }
+    },
+    "BlobListResponse": {
+      "type": "object",
+      "properties": {
+        "storageAccountName": { "type": "string" },
+        "containerName": { "type": "string" },
+        "prefix": { "type": "string" },
+        "count": { "type": "integer" },
+        "blobs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string", "description": "Full blob path (e.g. '2026/02/27/ScubaResults.json')" },
+              "lastModified": { "type": "string", "description": "ISO 8601 timestamp" },
+              "size": { "type": "integer", "description": "Blob size in bytes" }
+            }
+          }
+        }
       }
     },
     "ParsedResults": {

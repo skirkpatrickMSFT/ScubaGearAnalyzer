@@ -1,5 +1,11 @@
 App As appinfo:
     BackEnabled: =false
-    OnStart: =Set(varIsLoaded, false)
+    OnStart: |-
+        =Set(varIsLoaded, false);
+        Set(varUploadMode, "paste");
+        Set(varStorageLoading, false);
+        Set(varStorageAccountName, "");
+        Set(varContainerName, "");
+        Set(varSasToken, "")
     Theme: =PowerAppsTheme
     StartScreen: =scrUpload

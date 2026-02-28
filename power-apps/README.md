@@ -1,14 +1,89 @@
 # ScubaGear Analyzer — Power Apps Canvas App
 
+Two ways to get the app running:
+
+| Option | When to use |
+|--------|-------------|
+| **A — Import the pre-built package** | Fastest path. Import the exported `.zip` into your environment and connect your custom connector. |
+| **B — Build from scratch** | Follow the step-by-step guide below if you want full control or want to customise the app. |
+
+---
+
+## OPTION A: Import the Pre-built App Package
+
+The file **`ScubaGearAnalyzer_20260228142611.zip`** in this folder is a Power Apps
+exported package that contains the complete canvas app. It does **not** contain
+any secrets, API keys, connection strings, or personal data — it is safe to
+distribute.
+
+### Prerequisites
+
+Before importing you need:
+- The **APIScubaGearAnalyzer** custom connector already created in your
+  environment (see the [Deployment Guide](../DEPLOYMENT-GUIDE.md))
+- Maker or Environment Admin permissions in the target Power Platform environment
+
+### Import Steps
+
+1. Go to **[make.powerapps.com](https://make.powerapps.com)**
+2. Select the **environment** you want to deploy into (top-right switcher)
+3. In the left nav click **Apps** → **Import canvas app** (top bar)
+   - If you don't see "Import canvas app", click **⋯ Command bar** → **Import package**
+4. Click **Upload** and select `ScubaGearAnalyzer_20260228142611.zip`
+5. Power Apps will show the package contents:
+
+   | Resource | Type | Action |
+   |----------|------|--------|
+   | Scubagear JSON Analyzer | Canvas App | **Create as new** |
+
+6. Under **Import Setup** for the app, click the wrench icon (🔧):
+   - Choose **Create as new**
+   - Optionally rename the app (e.g. `ScubaGear Analyzer`)
+7. Click **Import** and wait for the success confirmation
+
+### Post-Import Setup
+
+After importing, the app has no data connections yet. You need to add the custom
+connector:
+
+1. Open the imported app in **Edit** mode (click **⋯** → **Edit**)
+2. In the left panel, click the **Data** icon (cylinder 🗄️)
+3. Click **+ Add data** → search for **APIScubaGearAnalyzer** → click to add
+4. If prompted, enter your API key (the Azure Function host key)
+5. Press **Ctrl+S** to save, then **Publish**
+
+> **Connector name mismatch?** If your custom connector has a different name
+> (e.g. `ScubaGearAnalyzer-API`), Power Apps will show errors on formulas that
+> reference `APIScubaGearAnalyzer`. Open each screen and use Find & Replace
+> (**Ctrl+H**) to update the connector name in all formulas.
+
+### Verify It Works
+
+1. Press **F5** to preview the app
+2. Paste sample ScubaGear JSON into the text area and click **Analyse Results**
+3. Confirm summary cards, product breakdown, and navigation all function correctly
+
+---
+
+## OPTION B: Build from Scratch
+
 Step-by-step build guide. Every click, every property, every formula.
 
-**Starting point**: You have a blank canvas app (Tablet format) with Screen1
-renamed to `scrUpload`, and the ScubaGear Analyzer custom connector added
+**Starting point**: You have a blank canvas app (Tablet format, 1366×768) with Screen1
+renamed to `scrUpload`, and the **APIScubaGearAnalyzer** custom connector added
 as a data source.
+
+> **Custom Connector name**: The connector is named `APIScubaGearAnalyzer` in formulas.
+> All connector calls in this guide use that name. If your connector has a different
+> name, replace `APIScubaGearAnalyzer` throughout.
 
 ---
 
 ## SCREEN 1: Upload & Summary (scrUpload)
+
+The upload screen supports two modes:
+- **Paste JSON** — paste ScubaGear output directly into a text input
+- **Load from Storage** — browse and load results from Azure Blob Storage (e.g. ScubaConnect output)
 
 ---
 
@@ -65,7 +140,7 @@ as a data source.
 ```
 Set(
     varResults,
-    ScubaGearAnalyzerAPI.ParseResults(
+    APIScubaGearAnalyzer.ParseResults(
         ParseJSON(txtJsonInput.Text)
     )
 );
@@ -446,7 +521,7 @@ ClearCollect(colFilteredControls, colControls)
    - **X**: `895`, **Y**: `340`, **Width**: `220`, **Height**: `40`
    - **Fill**: `RGBA(0, 120, 212, 1)`, **Color**: `RGBA(255, 255, 255, 1)`
    - **Visible**: `varShowDetail`
-   - **OnSelect**: `Set(varRemediation, ScubaGearAnalyzerAPI.GetRemediation(Text(varSelectedControl.controlId)))`
+   - **OnSelect**: `Set(varRemediation, APIScubaGearAnalyzer.GetRemediation(Text(varSelectedControl.controlId)))`
    - Rename to `btnRemediation`
 
 8. **Insert** → search **HTML text** → set:
@@ -460,7 +535,7 @@ ClearCollect(colFilteredControls, colControls)
    - **X**: `1130`, **Y**: `340`, **Width**: `220`, **Height**: `40`
    - **Fill**: `RGBA(16, 124, 16, 1)`, **Color**: `RGBA(255, 255, 255, 1)`
    - **Visible**: `varShowDetail`
-   - **OnSelect**: `Set(varControlDocs, ScubaGearAnalyzerAPI.GetControlDocs(Text(varSelectedControl.controlId), false))`
+   - **OnSelect**: `Set(varControlDocs, APIScubaGearAnalyzer.GetControlDocs(Text(varSelectedControl.controlId), false))`
 
 10. **Insert** → **Text label** → set:
     - **Text**: `If(!IsBlank(varControlDocs), "MS Learn Docs (" & Text(varControlDocs.count) & " found):" & Char(10) & Concat(varControlDocs.urls, Value, Char(10)), "")`
@@ -563,7 +638,7 @@ Press **Ctrl+S** to save.
 Collect(colChatHistory, {role: "user", content: txtMessage.Text});
 Set(
     varChatResponse,
-    ScubaGearAnalyzerAPI.Chat(
+    APIScubaGearAnalyzer.Chat(
         ParseJSON(JSON({message: txtMessage.Text, assessmentContext: varChatContext}))
     )
 );
@@ -574,6 +649,146 @@ Reset(txtMessage)
 ### Step 31 — SAVE
 
 Press **Ctrl+S** to save.
+
+---
+
+## STORAGE INTEGRATION (Load from ScubaConnect)
+
+These steps add a dual-mode upload: users can **paste JSON** or **load results
+directly from an Azure Blob Storage container** (e.g. a ScubaConnect output bucket).
+
+---
+
+### Step A — Update App.OnStart
+
+1. In the Tree view (left panel), click **App**
+2. In the property dropdown (formula bar), select **OnStart**
+3. Replace the formula with:
+
+```
+Set(varIsLoaded, false);
+Set(varUploadMode, "paste");
+Set(varStorageLoading, false);
+If(
+    !IsEmpty(LoadData("ScubaStorageSettings", true)),
+    With(
+        First(LoadData("ScubaStorageSettings", true)),
+        Set(varStorageAccountName, account);
+        Set(varContainerName, container);
+        Set(varSasToken, sas)
+    ),
+    Set(varStorageAccountName, "");
+    Set(varContainerName, "");
+    Set(varSasToken, "")
+)
+```
+
+This restores saved storage settings on app launch so users don't need to re-enter them each time.
+
+### Step B — Update Custom Connector
+
+Before adding storage controls, you need to update your Custom Connector to include the two new endpoints:
+
+1. Go to **make.powerapps.com** → **Custom Connectors** → **APIScubaGearAnalyzer** → **Edit**
+2. Switch to the **Definition** tab → delete the existing definition
+3. On the **General** tab → **Import from OpenAPI file** → upload the updated `azure-functions/openapi.json`
+4. Set host + API key as before → **Update connector**
+5. In your app, go to **Data** → remove and re-add the connector
+
+### Step C — Add Mode Toggle Buttons
+
+1. On `scrUpload`, **Insert** → **Button** → set properties:
+   - **Text**: `"Paste JSON"`
+   - **X**: `20`, **Y**: `70`, **Width**: `160`, **Height**: `36`
+   - **Fill**: `If(varUploadMode = "paste", RGBA(0, 120, 212, 1), RGBA(230, 230, 230, 1))`
+   - **Color**: `If(varUploadMode = "paste", RGBA(255, 255, 255, 1), RGBA(50, 50, 50, 1))`
+   - **OnSelect**: `Set(varUploadMode, "paste")`
+   - **BorderColor**: `RGBA(0, 120, 212, 1)`, **BorderThickness**: `1`
+   - Rename to `btnModePaste`
+
+2. **Insert** → **Button** → set properties:
+   - **Text**: `"Load from Storage"`
+   - **X**: `180`, **Y**: `70`, **Width**: `200`, **Height**: `36`
+   - **Fill**: `If(varUploadMode = "storage", RGBA(0, 120, 212, 1), RGBA(230, 230, 230, 1))`
+   - **Color**: `If(varUploadMode = "storage", RGBA(255, 255, 255, 1), RGBA(50, 50, 50, 1))`
+   - **OnSelect**: `Set(varUploadMode, "storage")`
+   - **BorderColor**: `RGBA(0, 120, 212, 1)`, **BorderThickness**: `1`
+   - Rename to `btnModeStorage`
+
+### Step D — Update Existing Controls Visibility
+
+1. Select `txtJsonInput` → set **Visible**: `varUploadMode = "paste"`
+   - Also update: **Y**: `120`, **Height**: `260`
+2. Select `btnParse` → set **Visible**: `varUploadMode = "paste"`
+
+### Step E — Add Storage Config Inputs
+
+1. **Insert** → **Text label** → `"Storage Account:"`, **X**: `20`, **Y**: `120`, **Visible**: `varUploadMode = "storage"` → Rename `lblStorageAccount`
+2. **Insert** → **Text input** → **X**: `170`, **Y**: `120`, **Width**: `300`, **HintText**: `"e.g. scubaconnectstorage"`, **Default**: `varStorageAccountName`, **Visible**: `varUploadMode = "storage"` → Rename `txtStorageAccount`
+3. **Insert** → **Text label** → `"Container Name:"`, **X**: `20`, **Y**: `158` → same Visible → Rename `lblContainer`
+4. **Insert** → **Text input** → **X**: `170`, **Y**: `158`, **Width**: `300`, **HintText**: `"e.g. scubagear-output"`, **Default**: `varContainerName` → Rename `txtContainer`
+5. **Insert** → **Text label** → `"SAS Token:"`, **X**: `20`, **Y**: `196` → Rename `lblSasToken`
+6. **Insert** → **Text input** → **X**: `170`, **Y**: `196`, **Width**: `510`, **HintText**: `"?sv=2023-01-03&ss=b&srt=co&sp=rl&se=..."`, **Default**: `varSasToken` → Rename `txtSasToken`
+
+### Step F — Add Save Settings Button
+
+1. **Insert** → **Button** → set properties:
+   - **Text**: `"Save Settings"`, **X**: `510`, **Y**: `120`, **Width**: `170`, **Height**: `30`
+   - **Fill**: `RGBA(230, 230, 230, 1)`, **Color**: `RGBA(50, 50, 50, 1)`
+   - **Visible**: `varUploadMode = "storage"`
+   - **OnSelect**:
+```
+Set(varStorageAccountName, txtStorageAccount.Text);
+Set(varContainerName, txtContainer.Text);
+Set(varSasToken, txtSasToken.Text);
+SaveData(
+    Table({account: txtStorageAccount.Text, container: txtContainer.Text, sas: txtSasToken.Text}),
+    "ScubaStorageSettings"
+);
+Notify("Storage settings saved", NotificationType.Success)
+```
+   - Rename to `btnSaveSettings`
+
+### Step G — Add Browse Files Controls
+
+1. **Insert** → **Text label** → `"Path Prefix:"`, **X**: `20`, **Y**: `240`, **Visible**: `varUploadMode = "storage"` → Rename `lblPrefix`
+2. **Insert** → **Text input** → **X**: `170`, **Y**: `240`, **Width**: `300`, **HintText**: `"e.g. 2026/02/ (optional)"` → Rename `txtPrefix`
+3. **Insert** → **Button** → set properties:
+   - **Text**: `"Browse Files"`, **X**: `490`, **Y**: `240`, **Width**: `190`, **Height**: `36`
+   - **OnSelect**:
+```
+Set(varBlobResult, APIScubaGearAnalyzer.ListBlobs(txtStorageAccount.Text, txtContainer.Text, txtSasToken.Text));
+ClearCollect(colBlobs, varBlobResult.blobs)
+```
+   - Rename to `btnListBlobs`
+
+### Step H — Add File List Gallery
+
+1. **Insert** → **Blank vertical gallery** → set properties:
+   - **X**: `20`, **Y**: `310`, **Width**: `660`, **Height**: `120`
+   - **TemplateSize**: `32`
+   - **Items**: `colBlobs`
+   - **Visible**: `varUploadMode = "storage" && CountRows(colBlobs) > 0`
+   - Rename to `galBlobs`
+2. Inside the gallery template, **Insert** → **Text label**:
+   - **Text**: `ThisItem.name`, **X**: `10`, **Y**: `2`, **Width**: `440`, **Size**: `10`
+3. **Insert** → another **Text label**:
+   - **Text**: `ThisItem.lastModified`, **X**: `460`, **Y**: `2`, **Width**: `190`, **Size**: `9`, **Color**: `RGBA(120,120,120,1)`
+
+### Step I — Add Load Selected Button
+
+1. **Insert** → **Button** → set properties:
+   - **Text**: `"Load Selected"`, **X**: `20`, **Y**: `390`, **Width**: `200`, **Height**: `40`
+   - **Visible**: `varUploadMode = "storage" && CountRows(colBlobs) > 0`
+   - **OnSelect**:
+```
+Set(varResults, APIScubaGearAnalyzer.FetchBlob(txtStorageAccount.Text, txtContainer.Text, txtSasToken.Text, galBlobs.Selected.name));
+ClearCollect(colProducts, varResults.productBreakdown);
+ClearCollect(colControls, varResults.controls);
+Set(varChatContext, varResults.chatContext);
+Set(varIsLoaded, true)
+```
+   - Rename to `btnLoadBlob`
 
 ---
 
@@ -613,9 +828,12 @@ Press **Ctrl+S** to save.
 
 | Problem | Fix |
 |---------|-----|
-| "ScubaGearAnalyzerAPI" not found in formulas | Go to **Data** panel → **+ Add data** → search for your custom connector and add it. The connector name in formulas must match exactly. |
+| "APIScubaGearAnalyzer" not found in formulas | Go to **Data** panel → **+ Add data** → search for your custom connector and add it. The connector name in formulas must match exactly. |
 | Button does nothing when clicked | Check the **OnSelect** property is set (not the **Text** property). Click the property dropdown in the formula bar. |
 | Gallery shows "No items" | Make sure you clicked **Analyse Results** first. The collections are empty until you parse JSON. |
 | Remediation returns blank | The control ID may not be in the baseline data. Try MS.AAD.1.1v1 first. |
 | Chat returns error | Check that the OPENAI_API_KEY is set on your Azure Function App. |
+| Storage "Access denied" | SAS token may be expired or missing List+Read permissions. Generate a new SAS token with `rl` (read + list) permissions on the blob container. |
+| Storage "Container not found" | Verify the storage account name and container name are spelled correctly. |
+| Browse Files returns 0 results | The prefix filter may be too restrictive, or the container has no `.json` files. Try leaving the prefix blank. |
 | varResults.summary.pass shows error | Wrap in `If(varIsLoaded, ..., "—")` to handle the unloaded state. |

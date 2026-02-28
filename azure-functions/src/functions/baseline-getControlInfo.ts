@@ -4,7 +4,7 @@
  * GET /api/baseline/control?controlId=MS.AAD.1.1v1
  * 
  * Returns detailed information about a CISA ScubaGear baseline control.
- * Used by Copilot Studio custom connector and Power Apps.
+ * Used by Power Apps and optionally Copilot Studio custom connector.
  */
 
 import { app, HttpRequest, HttpResponseInit, InvocationContext } from '@azure/functions';

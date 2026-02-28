@@ -89,7 +89,7 @@ scrChat As screen:
             =Collect(colChatHistory, {role: "user", content: txtMessage.Text});
             Set(
                 varChatResponse,
-                ScubaGearAnalyzerAPI.Chat({
+                APIScubaGearAnalyzer.Chat({
                     message: txtMessage.Text,
                     assessmentContext: varChatContext
                 })

@@ -173,7 +173,7 @@ scrControls As screen:
         Fill: =RGBA(0, 120, 212, 1)
         Color: =RGBA(255, 255, 255, 1)
         Visible: =varShowDetail
-        OnSelect: =Set(varRemediation, ScubaGearAnalyzerAPI.GetRemediation({controlId: varSelectedControl.controlId}))
+        OnSelect: =Set(varRemediation, APIScubaGearAnalyzer.GetRemediation({controlId: varSelectedControl.controlId}))
 
     lblRemediation As label:
         X: =895
@@ -194,4 +194,4 @@ scrControls As screen:
         Fill: =RGBA(16, 124, 16, 1)
         Color: =RGBA(255, 255, 255, 1)
         Visible: =varShowDetail
-        OnSelect: =Set(varControlDocs, ScubaGearAnalyzerAPI.GetControlDocs({controlId: varSelectedControl.controlId}))
+        OnSelect: =Set(varControlDocs, APIScubaGearAnalyzer.GetControlDocs({controlId: varSelectedControl.controlId}))

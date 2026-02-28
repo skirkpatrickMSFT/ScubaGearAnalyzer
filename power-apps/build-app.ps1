@@ -329,7 +329,7 @@ Write-Host @"
 
 2. After import, open the app in Edit mode and add your Custom Connector:
    - Data panel (left) > + Add data > search for 'ScubaGear'
-   - The connector name in formulas must match 'ScubaGearAnalyzerAPI'
+   - The connector name in formulas must match 'APIScubaGearAnalyzer'
 
 3. Test with test-subset.json from this repo (10 controls, 20% pass rate)
 

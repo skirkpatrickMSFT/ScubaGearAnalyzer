@@ -18,14 +18,47 @@ scrUpload As screen:
         FontWeight: =FontWeight.Bold
         Color: =RGBA(255, 255, 255, 1)
 
+    btnModePaste As button:
+        X: =20
+        Y: =70
+        Width: =160
+        Height: =36
+        Text: ="Paste JSON"
+        Fill: =If(varUploadMode = "paste", RGBA(0, 120, 212, 1), RGBA(230, 230, 230, 1))
+        Color: =If(varUploadMode = "paste", RGBA(255, 255, 255, 1), RGBA(50, 50, 50, 1))
+        OnSelect: =Set(varUploadMode, "paste")
+        BorderColor: =RGBA(0, 120, 212, 1)
+        BorderThickness: =1
+        RadiusTopLeft: =4
+        RadiusBottomLeft: =4
+        RadiusTopRight: =0
+        RadiusBottomRight: =0
+
+    btnModeStorage As button:
+        X: =180
+        Y: =70
+        Width: =200
+        Height: =36
+        Text: ="Load from Storage"
+        Fill: =If(varUploadMode = "storage", RGBA(0, 120, 212, 1), RGBA(230, 230, 230, 1))
+        Color: =If(varUploadMode = "storage", RGBA(255, 255, 255, 1), RGBA(50, 50, 50, 1))
+        OnSelect: =Set(varUploadMode, "storage")
+        BorderColor: =RGBA(0, 120, 212, 1)
+        BorderThickness: =1
+        RadiusTopLeft: =0
+        RadiusBottomLeft: =0
+        RadiusTopRight: =4
+        RadiusBottomRight: =4
+
     txtJsonInput As text:
         X: =20
-        Y: =80
+        Y: =120
         Width: =660
-        Height: =300
+        Height: =260
         Mode: =TextMode.MultiLine
         HintText: ="Paste your ScubaGear TestResults.json content here..."
         Size: =11
+        Visible: =varUploadMode = "paste"
 
     btnParse As button:
         X: =20
@@ -33,13 +66,171 @@ scrUpload As screen:
         Width: =200
         Height: =40
         Text: ="Analyse Results"
+        Visible: =varUploadMode = "paste"
         OnSelect: |-
             =Set(
                 varResults,
-                ScubaGearAnalyzerAPI.ParseResults(
+                APIScubaGearAnalyzer.ParseResults(
                     ParseJSON(txtJsonInput.Text)
                 )
             );
+            ClearCollect(colProducts, varResults.productBreakdown);
+            ClearCollect(colControls, varResults.controls);
+            Set(varChatContext, varResults.chatContext);
+            Set(varIsLoaded, true)
+
+    lblStorageAccount As label:
+        X: =20
+        Y: =120
+        Width: =150
+        Height: =30
+        Text: ="Storage Account:"
+        Size: =11
+        Visible: =varUploadMode = "storage"
+
+    txtStorageAccount As text:
+        X: =170
+        Y: =120
+        Width: =300
+        Height: =30
+        HintText: ="e.g. scubaconnectstorage"
+        Size: =11
+        Visible: =varUploadMode = "storage"
+        Default: =varStorageAccountName
+
+    lblContainer As label:
+        X: =20
+        Y: =158
+        Width: =150
+        Height: =30
+        Text: ="Container Name:"
+        Size: =11
+        Visible: =varUploadMode = "storage"
+
+    txtContainer As text:
+        X: =170
+        Y: =158
+        Width: =300
+        Height: =30
+        HintText: ="e.g. scubagear-output"
+        Size: =11
+        Visible: =varUploadMode = "storage"
+        Default: =varContainerName
+
+    lblSasToken As label:
+        X: =20
+        Y: =196
+        Width: =150
+        Height: =30
+        Text: ="SAS Token:"
+        Size: =11
+        Visible: =varUploadMode = "storage"
+
+    txtSasToken As text:
+        X: =170
+        Y: =196
+        Width: =510
+        Height: =30
+        HintText: ="?sv=2023-01-03&ss=b&srt=co&sp=rl&se=..."
+        Size: =9
+        Visible: =varUploadMode = "storage"
+        Default: =varSasToken
+
+    btnSaveSettings As button:
+        X: =510
+        Y: =120
+        Width: =170
+        Height: =30
+        Text: ="Save Settings"
+        Fill: =RGBA(230, 230, 230, 1)
+        Color: =RGBA(50, 50, 50, 1)
+        Size: =10
+        Visible: =varUploadMode = "storage"
+        OnSelect: |-
+            =Set(varStorageAccountName, txtStorageAccount.Text);
+            Set(varContainerName, txtContainer.Text);
+            Set(varSasToken, txtSasToken.Text);
+            SaveData(
+                Table({
+                    account: txtStorageAccount.Text,
+                    container: txtContainer.Text,
+                    sas: txtSasToken.Text
+                }),
+                "ScubaStorageSettings"
+            );
+            Notify("Storage settings saved", NotificationType.Success)
+
+    lblPrefix As label:
+        X: =20
+        Y: =240
+        Width: =150
+        Height: =30
+        Text: ="Path Prefix:"
+        Size: =11
+        Visible: =varUploadMode = "storage"
+
+    txtPrefix As text:
+        X: =170
+        Y: =240
+        Width: =300
+        Height: =30
+        HintText: ="e.g. 2026/02/ (optional)"
+        Size: =11
+        Visible: =varUploadMode = "storage"
+
+    btnListBlobs As button:
+        X: =490
+        Y: =240
+        Width: =190
+        Height: =36
+        Text: ="Browse Files"
+        Fill: =RGBA(0, 120, 212, 1)
+        Color: =RGBA(255, 255, 255, 1)
+        Visible: =varUploadMode = "storage"
+        OnSelect: |-
+            =Set(varBlobResult, APIScubaGearAnalyzer.ListBlobs(txtStorageAccount.Text, txtContainer.Text, txtSasToken.Text));
+            ClearCollect(colBlobs, varBlobResult.blobs)
+
+    lblBlobCount As label:
+        X: =20
+        Y: =284
+        Width: =660
+        Height: =24
+        Text: =If(!IsEmpty(colBlobs), CountRows(colBlobs) & " result file(s) found", "")
+        Size: =11
+        Color: =RGBA(100, 100, 100, 1)
+        Visible: =varUploadMode = "storage"
+
+    rectGalBlobsPlaceholder As rectangle:
+        X: =20
+        Y: =310
+        Width: =660
+        Height: =70
+        Fill: =RGBA(245, 245, 245, 1)
+        BorderColor: =RGBA(211, 211, 211, 1)
+        BorderThickness: =1
+        Visible: =varUploadMode = "storage"
+
+    lblGalBlobsHint As label:
+        X: =30
+        Y: =320
+        Width: =640
+        Height: =40
+        Text: ="DELETE this rectangle and hint label, then Insert a Blank Vertical Gallery here named galBlobs (see README Step H)"
+        Size: =10
+        Color: =RGBA(169, 169, 169, 1)
+        Align: =Align.Center
+        Visible: =varUploadMode = "storage"
+
+    btnLoadBlob As button:
+        X: =20
+        Y: =390
+        Width: =200
+        Height: =40
+        Text: ="Load Selected"
+        Visible: =varUploadMode = "storage" && CountRows(colBlobs) > 0
+        OnSelect: |-
+            =Set(varResults, APIScubaGearAnalyzer.FetchBlob(txtStorageAccount.Text, txtContainer.Text, txtSasToken.Text, galBlobs.Selected.name));
             ClearCollect(colProducts, varResults.productBreakdown);
             ClearCollect(colControls, varResults.controls);
             Set(varChatContext, varResults.chatContext);

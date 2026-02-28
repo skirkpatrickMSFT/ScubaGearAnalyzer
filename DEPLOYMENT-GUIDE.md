@@ -14,15 +14,15 @@ Before you begin, make sure the following are available in your environment.
 |-------------|---------|
 | **Azure subscription** | Any subscription where you can create resource groups |
 | **Azure CLI** | Install from [https://aka.ms/installazurecli](https://aka.ms/installazurecli), then run `az login` |
-| **Node.js 20+** | Install from [https://nodejs.org](https://nodejs.org) |
+| **Node.js 22+** | Install from [https://nodejs.org](https://nodejs.org) |
 | **OpenAI API key** | GPT-4o key from [https://platform.openai.com](https://platform.openai.com) |
-| **Power Platform environment** | With Power Apps and Copilot Studio access |
+| **Power Platform environment** | With Power Apps access (Copilot Studio is optional) |
 
 Verify your tools:
 
 ```powershell
 az --version       # Azure CLI
-node --version     # Node.js 20+
+node --version     # Node.js 22+
 ```
 
 ---
@@ -97,7 +97,7 @@ The Custom Connector bridges Power Platform to your Azure Functions.
 
 1. Go to [Power Apps](https://make.powerapps.com) → **More** → **Discover all** → **Custom Connectors**
 2. Click **+ New custom connector** → **Import an OpenAPI file**
-3. Name it **ScubaGearAnalyzer** and upload `azure-functions/openapi.json`
+3. Name it **APIScubaGearAnalyzer** and upload `azure-functions/openapi.json`
 4. On the **General** tab:
    - **Host**: paste your Function App hostname (e.g., `<your-app>.azurewebsites.net`)
    - **Base URL**: `/api`
@@ -130,7 +130,7 @@ Follow the complete build guide:
 
 | Screen | Purpose |
 |--------|---------|
-| **Upload** | Drop or paste a `TestResults.json` file, view pass/fail summary |
+| **Upload** | Paste a `TestResults.json` or load from Azure Blob Storage, view pass/fail summary |
 | **Controls** | Browse and filter individual control results by product |
 | **Chat** | Ask the AI assistant questions about failures, remediation, and baselines |
 
@@ -171,7 +171,9 @@ Run through these checks to confirm everything is working:
 | 4 | Navigate to the Chat screen | Chat interface loads |
 | 5 | Ask: *"What is MS.AAD.3.1v1?"* | AI responds with control details |
 | 6 | Ask: *"How do I remediate MS.EXO.4.1v1?"* | AI responds with remediation steps and admin portal paths |
-| 7 | (If Copilot Studio) Test the agent in the Test pane | Agent calls connector actions and returns grounded answers |
+| 7 | Switch to Storage mode and enter storage details | Browse Files returns JSON blobs from the container |
+| 8 | Select a blob and click Load Selected | Results are parsed and displayed the same as pasted JSON |
+| 9 | (If Copilot Studio) Test the agent in the Test pane | Agent calls connector actions and returns grounded answers |
 
 ---
 
@@ -184,7 +186,7 @@ To remove all Azure resources when you're done:
 ```
 
 This deletes the resource group and all resources within it. Power Platform
-components (Custom Connector, Canvas App, Copilot Studio Agent) must be removed
+components (Custom Connector, Canvas App, and optionally the Copilot Studio Agent) must be removed
 manually from their respective admin portals.
 
 ---
@@ -196,7 +198,7 @@ manually from their respective admin portals.
 | Project overview | [README.md](README.md) |
 | Custom Connector details | [POWER-PLATFORM-DEPLOY.md](POWER-PLATFORM-DEPLOY.md) |
 | Canvas app build guide | [power-apps/README.md](power-apps/README.md) |
-| Copilot Studio setup | [copilot-studio/README.md](copilot-studio/README.md) |
+| Copilot Studio setup (optional) | [copilot-studio/README.md](copilot-studio/README.md) |
 | API endpoint reference | [README.md → API Endpoints](README.md) |
 | Azure Functions deployment | [deploy-functions.ps1](deploy-functions.ps1) |
 | Infrastructure template | [infra/functions.bicep](infra/functions.bicep) |

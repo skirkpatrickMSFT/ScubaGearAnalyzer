@@ -1,7 +1,7 @@
-# ScubaGear Analyzer — Power Apps + Copilot Studio Deployment
+# ScubaGear Analyzer — Power Platform Deployment
 
 This guide covers deploying the ScubaGear Analyzer as a **Power Apps** dashboard
-with a **Copilot Studio** AI agent, backed by **Azure Functions**.
+backed by **Azure Functions**, with an optional **Copilot Studio** AI agent.
 
 ## Architecture
 
@@ -10,7 +10,7 @@ with a **Copilot Studio** AI agent, backed by **Azure Functions**.
 │              Power Platform                      │
 │  ┌──────────────┐    ┌────────────────────┐     │
 │  │  Power Apps   │    │  Copilot Studio    │     │
-│  │  Canvas App   │    │  Agent             │     │
+│  │  Canvas App   │    │  Agent (optional)  │     │
 │  │  (Dashboard)  │    │  (AI Chat)         │     │
 │  └──────┬───────┘    └────────┬───────────┘     │
 │         │                     │                  │
@@ -37,10 +37,10 @@ with a **Copilot Studio** AI agent, backed by **Azure Functions**.
 
 - **Azure subscription** (for Azure Functions)
 - **Azure CLI** (`az`) installed
-- **Node.js 20+**
+- **Node.js 22+**
 - **Azure Functions Core Tools** (`func`)
 - **OpenAI API key** (GPT-4o)
-- **Power Platform environment** with Copilot Studio access
+- **Power Platform environment** with Power Apps access (Copilot Studio optional)
 
 ## Quick Start
 
@@ -72,9 +72,12 @@ This will:
 6. Click **Create connector**
 7. Go to **Test** tab, create a connection with your function host key, and test `ListControls`
 
-### 3. Create Copilot Studio Agent
+### 3. Create Copilot Studio Agent (Optional)
 
-Follow the detailed instructions in [`copilot-studio/README.md`](copilot-studio/README.md).
+If you want a conversational AI agent in addition to the Power Apps dashboard,
+follow the detailed instructions in [`copilot-studio/README.md`](copilot-studio/README.md).
+This step is **not required** — the Power Apps canvas app includes its own
+built-in AI chat screen that calls the Azure Functions `/api/chat` endpoint directly.
 
 Summary:
 1. Create a new agent in [Copilot Studio](https://copilotstudio.microsoft.com)
@@ -83,14 +86,16 @@ Summary:
 4. Add connector actions (GetControlInfo, SearchBaseline, Chat, etc.)
 5. Test with: "What is MS.AAD.3.1v1?"
 
-### 4. Build Power Apps Dashboard (Optional)
+### 4. Build Power Apps Dashboard
 
 Create a Canvas App with:
-- **File upload** → calls `ParseResults` to parse ScubaGear JSON
-- **Summary cards** showing pass/fail/manual counts
+- **Paste JSON or load from Azure Blob Storage** — dual-mode upload
+- **Summary cards** showing pass/fail/manual/omitted counts
 - **Product gallery** with per-product pass rates
 - **Controls table** with status filtering
-- **Copilot control** embedding the Copilot Studio agent for chat
+- **AI chat screen** calling the `/api/chat` endpoint directly (or optionally embedding a Copilot Studio agent)
+
+Supports ScubaGear 1.5–1.7 output, including omitted controls and exemptions.
 
 ## API Endpoints
 
@@ -105,6 +110,8 @@ Create a Canvas App with:
 | `/api/learn/control-docs?controlId=...` | GET | Get Learn docs for a control |
 | `/api/learn/article?url=...` | GET | Fetch a Learn article |
 | `/api/parse-results` | POST | Parse ScubaGear JSON results |
+| `/api/storage/list-blobs` | GET | List JSON blobs in a storage container |
+| `/api/storage/fetch-blob` | POST | Fetch a blob from storage and parse it |
 | `/api/chat` | POST | AI-powered compliance chat |
 
 ## Local Development
@@ -158,14 +165,16 @@ azure-functions/
     │   ├── learn-getArticle.ts
     │   ├── learn-getControlDocs.ts
     │   ├── learn-search.ts
-    │   └── parse-results.ts             # ScubaGear JSON parser
+    │   ├── parse-results.ts             # ScubaGear JSON parser
+    │   ├── storage-fetchBlob.ts         # Fetch & parse blob from storage
+    │   └── storage-listBlobs.ts         # Browse Azure Blob Storage
     └── shared/
         ├── baseline-data.ts             # CISA baseline control definitions
         ├── learn-fetcher.ts             # Microsoft Learn API client
         ├── scubagear-parser.ts          # JSON parser + summary builder
         └── types.ts                     # Shared TypeScript types
 
-copilot-studio/
+copilot-studio/                          # Optional — alternative chat interface
 ├── README.md                    # Copilot Studio setup instructions
 └── agent-definition.yaml        # Agent config (topics, actions, prompts)
 

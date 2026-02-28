@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Deploys the ScubaGear Analyzer Azure Functions backend for Power Apps + Copilot Studio.
+    Deploys the ScubaGear Analyzer Azure Functions backend for Power Apps (and optionally Copilot Studio).
 
 .DESCRIPTION
     1. Creates a resource group (if not exists)
@@ -136,7 +136,7 @@ Write-Host "     - Import azure-functions/openapi.json" -ForegroundColor White
 Write-Host "     - Set host to: $($funcAppUrl -replace 'https://','')" -ForegroundColor White
 Write-Host "     - Set API key to the host key above" -ForegroundColor White
 Write-Host ""
-Write-Host "  2. Create a Copilot Studio agent" -ForegroundColor White
+Write-Host "  2. (Optional) Create a Copilot Studio agent" -ForegroundColor White
 Write-Host "     - See copilot-studio/README.md for instructions" -ForegroundColor White
 Write-Host ""
 Write-Host "  3. Test endpoints:" -ForegroundColor White

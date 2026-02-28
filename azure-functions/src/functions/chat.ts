@@ -6,7 +6,8 @@
  * 
  * LLM-powered chat using OpenAI GPT-4o with function-calling.
  * Grounded on ScubaGear baseline data and Microsoft Learn documentation.
- * This is the primary endpoint consumed by the Copilot Studio agent.
+ * This is the primary endpoint consumed by the Power Apps chat screen
+ * (and optionally the Copilot Studio agent).
  */
 
 import { app, HttpRequest, HttpResponseInit, InvocationContext } from '@azure/functions';

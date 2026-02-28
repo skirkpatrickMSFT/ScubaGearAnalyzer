@@ -16,7 +16,6 @@ Thumbs.db
 
 # PowerApps build artifacts (keep source, ignore binary)
 power-apps/ScubaGearAnalyzer.msapp
-power-apps/base-app.msapp
 
 # Package output
 release/

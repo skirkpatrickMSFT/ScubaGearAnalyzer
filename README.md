@@ -1,15 +1,17 @@
 # ScubaGear Analyzer
 
-Analyze CISA ScubaGear assessment results with an interactive Power Apps dashboard and AI-powered remediation chat. Upload your `TestResults.json` from a ScubaGear run and get compliance insights grounded in CISA baselines and Microsoft Learn documentation.
+Analyze CISA ScubaGear assessment results with an interactive Power Apps dashboard and AI-powered remediation chat. Upload your `TestResults.json` from a ScubaGear run — or load results directly from Azure Blob Storage (e.g. a ScubaConnect output container) — and get compliance insights grounded in CISA baselines and Microsoft Learn documentation.
+
+Supports **ScubaGear 1.5–1.7** output formats, including omitted controls, exemptions, incorrect-result overrides, and per-control comments.
 
 ## What's Included
 
 | Component | Description |
 |-----------|-------------|
-| `azure-functions/` | TypeScript Azure Functions backend — JSON parsing, baseline lookups, Learn docs, GPT-4o chat |
+| `azure-functions/` | TypeScript Azure Functions backend — JSON parsing, baseline lookups, Learn docs, storage integration, GPT-4o chat (12 endpoints) |
 | `infra/` | Bicep deployment template (`functions.bicep`) |
 | `power-apps/` | Power Apps canvas app build guide + source files |
-| `copilot-studio/` | Copilot Studio agent definition |
+| `copilot-studio/` | Copilot Studio agent definition *(optional — alternative chat interface)* |
 | `deploy-functions.ps1` | One-click Azure Functions deployment script |
 | `DEPLOYMENT-GUIDE.md` | End-to-end deployment walkthrough |
 | `test-subset.json` | Sample ScubaGear results for testing |
@@ -21,20 +23,28 @@ Analyze CISA ScubaGear assessment results with an interactive Power Apps dashboa
 │              Power Platform                      │
 │  ┌──────────────┐    ┌────────────────────┐     │
 │  │  Power Apps   │    │  Copilot Studio    │     │
-│  │  Canvas App   │    │  Agent             │     │
+│  │  Canvas App   │    │  Agent (optional)  │     │
 │  └──────┬───────┘    └────────┬───────────┘     │
 │         └──────┬──────────────┘                  │
 │     ┌──────────▼──────────┐                     │
 │     │  Custom Connector   │                     │
+│     │ (APIScubaGearAnalyzer)                    │
 │     └──────────┬──────────┘                     │
 └────────────────┼────────────────────────────────┘
                  │ HTTPS + API Key
 ┌────────────────▼────────────────────────────────┐
-│           Azure Functions                        │
-│  /api/parse-results  — ScubaGear JSON parser    │
-│  /api/baseline/*     — CISA baseline data       │
-│  /api/learn/*        — Microsoft Learn proxy    │
-│  /api/chat           — GPT-4o AI chat           │
+│           Azure Functions (Flex Consumption)     │
+│  /api/parse-results      — ScubaGear JSON parser│
+│  /api/baseline/*         — CISA baseline data   │
+│  /api/learn/*            — Microsoft Learn proxy│
+│  /api/storage/list-blobs — Browse blob storage  │
+│  /api/storage/fetch-blob — Load blob & parse    │
+│  /api/chat               — GPT-4o AI chat       │
+└──────────────────┬──────────────────────────────┘
+                   │ SAS Token
+┌──────────────────▼──────────────────────────────┐
+│        Azure Blob Storage (ScubaConnect)         │
+│  scubagear-output / yyyy/MM/dd/ScubaResults.json│
 └─────────────────────────────────────────────────┘
 ```
 
@@ -42,9 +52,9 @@ Analyze CISA ScubaGear assessment results with an interactive Power Apps dashboa
 
 - **Azure subscription**
 - **Azure CLI** (`az`) installed and logged in
-- **Node.js 20+**
+- **Node.js 22+**
 - **OpenAI API key** (GPT-4o)
-- **Power Platform environment** (for Power Apps + Copilot Studio)
+- **Power Platform environment** (for Power Apps; Copilot Studio is optional)
 
 ## Quick Start — Power Apps Deployment
 
@@ -97,7 +107,9 @@ The analyzer includes full baseline data for all CISA ScubaGear products:
 
 ## ScubaGear JSON Format
 
-The app expects the standard `TestResults.json` array:
+The app accepts both ScubaGear output formats:
+
+**TestResults format** (ScubaGear < 1.5) — flat array:
 
 ```json
 [
@@ -112,7 +124,13 @@ The app expects the standard `TestResults.json` array:
 ]
 ```
 
-It also accepts the wrapper format: `{ "Results": [...] }`.
+**ScubaResults format** (ScubaGear 1.5–1.7) — nested with product groups:
+
+```json
+{ "Results": { "AAD": [{ "GroupName": "...", "Controls": [...] }], ... } }
+```
+
+ScubaGear 1.7 fields supported: `Omitted` status, `OmittedEvaluationResult`, `IncorrectResult`, `OriginalResult`, `Comments`, `ResolutionDate`.
 
 ## API Endpoints
 
@@ -127,6 +145,8 @@ It also accepts the wrapper format: `{ "Results": [...] }`.
 | `/api/learn/control-docs?controlId=...` | GET | Get Learn docs for a control |
 | `/api/learn/search?query=...` | GET | Search Microsoft Learn |
 | `/api/learn/article?url=...` | GET | Fetch a Learn article |
+| `/api/storage/list-blobs` | GET | List JSON blobs in a storage container |
+| `/api/storage/fetch-blob` | POST | Fetch a blob from storage and parse it |
 | `/api/chat` | POST | AI-powered compliance chat |
 
 ## Local Development
@@ -139,6 +159,8 @@ npm run build
 $env:OPENAI_API_KEY = "<your-key>"
 func start
 ```
+
+The function app runs on Node.js 22 (Flex Consumption plan in Azure).
 
 ## Teardown
 
