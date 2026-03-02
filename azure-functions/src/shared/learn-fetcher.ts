@@ -200,12 +200,85 @@ export const CONTROL_LEARN_URLS: Record<string, string[]> = {
   "MS.EXO.14.1v1": [
     "https://learn.microsoft.com/en-us/purview/audit-log-enable-disable",
   ],
+  "MS.EXO.4.4v1": [
+    "https://learn.microsoft.com/en-us/microsoft-365/security/office-365-security/email-authentication-dmarc-configure",
+  ],
+  "MS.EXO.8.3v1": [
+    "https://learn.microsoft.com/en-us/purview/dlp-learn-about-dlp",
+  ],
+  "MS.EXO.8.4v1": [
+    "https://learn.microsoft.com/en-us/purview/dlp-learn-about-dlp",
+  ],
+  "MS.EXO.9.3v2": [
+    "https://learn.microsoft.com/en-us/defender-office-365/anti-malware-protection-about",
+  ],
+  "MS.EXO.9.4v1": [
+    "https://learn.microsoft.com/en-us/defender-office-365/anti-malware-protection-about",
+  ],
+  "MS.EXO.9.5v1": [
+    "https://learn.microsoft.com/en-us/defender-office-365/anti-malware-protection-about",
+  ],
+  "MS.EXO.10.3v1": [
+    "https://learn.microsoft.com/en-us/microsoft-365/security/office-365-security/anti-malware-policies-configure",
+  ],
+  "MS.EXO.11.1v1": [
+    "https://learn.microsoft.com/en-us/microsoft-365/security/office-365-security/anti-phishing-policies-about",
+  ],
+  "MS.EXO.11.2v1": [
+    "https://learn.microsoft.com/en-us/microsoft-365/security/office-365-security/anti-phishing-policies-about",
+  ],
+  "MS.EXO.11.3v1": [
+    "https://learn.microsoft.com/en-us/microsoft-365/security/office-365-security/anti-phishing-policies-about",
+  ],
+  "MS.EXO.12.2v1": [
+    "https://learn.microsoft.com/en-us/microsoft-365/security/office-365-security/connection-filter-policies-configure",
+  ],
+  "MS.EXO.14.2v1": [
+    "https://learn.microsoft.com/en-us/defender-office-365/anti-spam-policies-configure",
+  ],
+  "MS.EXO.14.3v1": [
+    "https://learn.microsoft.com/en-us/defender-office-365/anti-spam-policies-configure",
+  ],
+  "MS.EXO.14.4v1": [
+    "https://learn.microsoft.com/en-us/defender-office-365/anti-spam-policies-configure",
+  ],
+  "MS.EXO.15.1v1": [
+    "https://learn.microsoft.com/en-us/microsoft-365/security/office-365-security/safe-links-about",
+  ],
+  "MS.EXO.15.2v1": [
+    "https://learn.microsoft.com/en-us/microsoft-365/security/office-365-security/safe-links-about",
+  ],
+  "MS.EXO.15.3v1": [
+    "https://learn.microsoft.com/en-us/microsoft-365/security/office-365-security/safe-links-about",
+  ],
+  "MS.EXO.16.1v1": [
+    "https://learn.microsoft.com/en-us/microsoft-365/security/office-365-security/alert-policies-defender-portal",
+  ],
+  "MS.EXO.16.2v1": [
+    "https://learn.microsoft.com/en-us/microsoft-365/security/office-365-security/alert-policies-defender-portal",
+  ],
+  "MS.EXO.17.1v1": [
+    "https://learn.microsoft.com/en-us/purview/audit-log-enable-disable",
+  ],
+  "MS.EXO.17.3v1": [
+    "https://learn.microsoft.com/en-us/purview/audit-log-retention-policies",
+    "https://learn.microsoft.com/en-us/purview/audit-log-export-records",
+  ],
 
   // ── Microsoft Defender ──
   "MS.DEFENDER.1.1v1": [
     "https://learn.microsoft.com/en-us/microsoft-365/security/office-365-security/preset-security-policies",
   ],
   "MS.DEFENDER.1.2v1": [
+    "https://learn.microsoft.com/en-us/microsoft-365/security/office-365-security/preset-security-policies",
+  ],
+  "MS.DEFENDER.1.3v1": [
+    "https://learn.microsoft.com/en-us/microsoft-365/security/office-365-security/preset-security-policies",
+  ],
+  "MS.DEFENDER.1.4v1": [
+    "https://learn.microsoft.com/en-us/microsoft-365/security/office-365-security/preset-security-policies",
+  ],
+  "MS.DEFENDER.1.5v1": [
     "https://learn.microsoft.com/en-us/microsoft-365/security/office-365-security/preset-security-policies",
   ],
   "MS.DEFENDER.2.1v1": [
@@ -228,11 +301,35 @@ export const CONTROL_LEARN_URLS: Record<string, string[]> = {
   "MS.DEFENDER.4.1v1": [
     "https://learn.microsoft.com/en-us/microsoft-365/security/office-365-security/anti-phishing-policies-about",
   ],
+  "MS.DEFENDER.4.2v1": [
+    "https://learn.microsoft.com/en-us/purview/dlp-create-deploy-policy",
+    "https://learn.microsoft.com/en-us/purview/dlp-policy-reference",
+  ],
+  "MS.DEFENDER.4.3v1": [
+    "https://learn.microsoft.com/en-us/purview/dlp-create-deploy-policy",
+  ],
+  "MS.DEFENDER.4.4v1": [
+    "https://learn.microsoft.com/en-us/purview/dlp-policy-tips-reference",
+  ],
+  "MS.DEFENDER.4.5v1": [
+    "https://learn.microsoft.com/en-us/purview/dlp-configure-endpoint-settings",
+  ],
+  "MS.DEFENDER.4.6v1": [
+    "https://learn.microsoft.com/en-us/purview/dlp-configure-endpoint-settings",
+    "https://learn.microsoft.com/en-us/purview/dlp-create-deploy-policy",
+  ],
   "MS.DEFENDER.5.1v1": [
     "https://learn.microsoft.com/en-us/microsoft-365/security/office-365-security/anti-spam-protection-about",
   ],
+  "MS.DEFENDER.5.2v1": [
+    "https://learn.microsoft.com/en-us/purview/alert-policies",
+  ],
   "MS.DEFENDER.6.1v1": [
     "https://learn.microsoft.com/en-us/microsoft-365/security/office-365-security/zero-hour-auto-purge",
+  ],
+  "MS.DEFENDER.6.3v1": [
+    "https://learn.microsoft.com/en-us/purview/audit-log-retention-policies",
+    "https://learn.microsoft.com/en-us/purview/audit-premium-setup",
   ],
 
   // ── Power Platform ──
@@ -254,8 +351,17 @@ export const CONTROL_LEARN_URLS: Record<string, string[]> = {
   "MS.POWERPLATFORM.3.1v1": [
     "https://learn.microsoft.com/en-us/power-platform/admin/cross-tenant-restrictions",
   ],
+  "MS.POWERPLATFORM.3.2v1": [
+    "https://learn.microsoft.com/en-us/power-platform/admin/cross-tenant-restrictions",
+  ],
   "MS.POWERPLATFORM.4.1v1": [
     "https://learn.microsoft.com/en-us/power-platform/admin/content-security-policy",
+  ],
+  "MS.POWERPLATFORM.5.1v1": [
+    "https://learn.microsoft.com/en-us/power-pages/admin/admin-roles",
+  ],
+  "MS.POWERPLATFORM.6.1v1": [
+    "https://learn.microsoft.com/en-us/power-platform/admin/settings-privacy-security",
   ],
 
   // ── SharePoint Online ──
@@ -280,6 +386,9 @@ export const CONTROL_LEARN_URLS: Record<string, string[]> = {
   "MS.SHAREPOINT.3.2v1": [
     "https://learn.microsoft.com/en-us/sharepoint/turn-external-sharing-on-or-off",
   ],
+  "MS.SHAREPOINT.3.3v1": [
+    "https://learn.microsoft.com/en-us/sharepoint/turn-external-sharing-on-or-off",
+  ],
   "MS.SHAREPOINT.4.1v1": [
     "https://learn.microsoft.com/en-us/sharepoint/allow-or-prevent-custom-script",
   ],
@@ -294,8 +403,26 @@ export const CONTROL_LEARN_URLS: Record<string, string[]> = {
   "MS.TEAMS.1.3v1": [
     "https://learn.microsoft.com/en-us/microsoftteams/manage-external-access",
   ],
+  "MS.TEAMS.1.4v1": [
+    "https://learn.microsoft.com/en-us/microsoftteams/meeting-settings-in-teams",
+  ],
+  "MS.TEAMS.1.5v1": [
+    "https://learn.microsoft.com/en-us/microsoftteams/meeting-settings-in-teams",
+  ],
+  "MS.TEAMS.1.6v1": [
+    "https://learn.microsoft.com/en-us/microsoftteams/meeting-settings-in-teams",
+  ],
+  "MS.TEAMS.1.7v2": [
+    "https://learn.microsoft.com/en-us/microsoftteams/who-can-bypass-meeting-lobby",
+  ],
   "MS.TEAMS.2.1v1": [
     "https://learn.microsoft.com/en-us/microsoftteams/guest-access",
+  ],
+  "MS.TEAMS.2.2v2": [
+    "https://learn.microsoft.com/en-us/microsoftteams/manage-external-access",
+  ],
+  "MS.TEAMS.2.3v2": [
+    "https://learn.microsoft.com/en-us/microsoftteams/manage-external-access",
   ],
   "MS.TEAMS.3.1v1": [
     "https://learn.microsoft.com/en-us/microsoftteams/meeting-settings-in-teams",
@@ -312,8 +439,26 @@ export const CONTROL_LEARN_URLS: Record<string, string[]> = {
   "MS.TEAMS.5.2v1": [
     "https://learn.microsoft.com/en-us/microsoftteams/manage-apps",
   ],
+  "MS.TEAMS.5.3v2": [
+    "https://learn.microsoft.com/en-us/microsoftteams/manage-apps",
+  ],
   "MS.TEAMS.6.1v1": [
     "https://learn.microsoft.com/en-us/purview/dlp-microsoft-teams",
+  ],
+  "MS.TEAMS.6.2v1": [
+    "https://learn.microsoft.com/en-us/purview/dlp-microsoft-teams",
+  ],
+  "MS.TEAMS.7.1v1": [
+    "https://learn.microsoft.com/en-us/microsoft-365/security/office-365-security/safe-attachments-for-spo-odfb-teams-about",
+  ],
+  "MS.TEAMS.7.2v1": [
+    "https://learn.microsoft.com/en-us/microsoft-365/security/office-365-security/safe-attachments-for-spo-odfb-teams-configure",
+  ],
+  "MS.TEAMS.8.1v1": [
+    "https://learn.microsoft.com/en-us/microsoft-365/security/office-365-security/safe-links-about",
+  ],
+  "MS.TEAMS.8.2v1": [
+    "https://learn.microsoft.com/en-us/microsoft-365/security/office-365-security/safe-links-about",
   ],
 };
 

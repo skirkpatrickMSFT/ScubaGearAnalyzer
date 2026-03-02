@@ -1017,19 +1017,22 @@ export const AAD_BASELINE_CONTROLS: BaselineControl[] = [
 
 export const EXO_SECTIONS: Record<number, string> = {
   1: "Automatic Forwarding",
-  2: "Calendar and Contact Sharing",
+  2: "Sender Policy Framework",
   3: "DKIM",
   4: "DMARC",
   5: "SMTP Authentication",
-  6: "SPF",
-  7: "Inbound Anti-Spam Protections",
-  8: "Phishing Protections",
-  9: "Connection Filter",
-  10: "Malware Filter",
-  11: "Attachment Handling",
-  12: "Alerts",
-  13: "Audit",
-  14: "Mailbox Auditing",
+  6: "Calendar and Contact Sharing",
+  7: "External Sender Warnings",
+  8: "Data Loss Prevention",
+  9: "Attachment File Type",
+  10: "Malware Scanning",
+  11: "Phishing Protections",
+  12: "IP Allow Lists",
+  13: "Mailbox Auditing",
+  14: "Inbound Anti-Spam Protections",
+  15: "Link Protection",
+  16: "Alerts",
+  17: "Audit Logging",
 };
 
 export const EXO_BASELINE_CONTROLS: BaselineControl[] = [
@@ -1465,6 +1468,438 @@ export const EXO_BASELINE_CONTROLS: BaselineControl[] = [
 4. Alternatively, use PowerShell: Set-AdminAuditLogConfig -UnifiedAuditLogIngestionEnabled $true`,
     licenseRequirements: "N/A",
   },
+
+  // ── Section 4 (cont.): DMARC — additional controls ──
+  {
+    id: "MS.EXO.4.4v1",
+    section: "DMARC",
+    sectionNumber: 4,
+    title: "An agency point of contact SHOULD be included for aggregate and failure reports",
+    description: "The DMARC record should include an agency-specific point of contact in the RUA and RUF fields for receiving aggregate and failure reports.",
+    criticality: "SHOULD",
+    rationale: "Email spoofing attempts are not inherently visible to domain owners. DMARC provides a mechanism to receive reports of spoofing attempts. Including an agency point of contact gives the agency insight into attempts to spoof their domains.",
+    lastModified: "June 2023",
+    checkType: "Automated",
+    configurable: true,
+    bod2501: false,
+    notes: [],
+    nistMapping: ["SI-4(5)"],
+    mitreMapping: ["T1562: Impair Defenses"],
+    resources: ["https://learn.microsoft.com/en-us/microsoft-365/security/office-365-security/email-authentication-dmarc-configure"],
+    implementation: `1. Update the DMARC DNS record to include an agency point of contact in the RUA field.
+2. Include reports@dmarc.cyber.dhs.gov as one of the emails in the RUA field.
+3. Include one or more agency-defined points of contact in the RUF field.
+4. Example: v=DMARC1; p=reject; pct=100; rua=mailto:reports@dmarc.cyber.dhs.gov,mailto:reports@example.com; ruf=mailto:reports@example.com`,
+    licenseRequirements: "N/A",
+  },
+
+  // ── Section 8 (cont.): Data Loss Prevention — additional manual controls ──
+  {
+    id: "MS.EXO.8.3v1",
+    section: "Data Loss Prevention",
+    sectionNumber: 8,
+    title: "The DLP solution SHOULD offer services comparable to the native DLP solution offered by Microsoft",
+    description: "Any alternative DLP solution should be able to detect sensitive information in Exchange Online and block access to unauthorized entities.",
+    criticality: "SHOULD",
+    rationale: "Any alternative DLP solution should be able to detect sensitive information in Exchange Online and block access to unauthorized entities.",
+    lastModified: "May 2024",
+    checkType: "Manual",
+    configurable: false,
+    bod2501: false,
+    notes: [],
+    nistMapping: ["SC-7(10)"],
+    mitreMapping: ["T1567: Exfiltration Over Web Service", "T1048: Exfiltration Over Alternative Protocol", "T1530: Data from Cloud Storage"],
+    resources: [],
+    implementation: `Any product meeting the requirements outlined in this baseline policy may be used. If the agency uses Microsoft Defender, see the implementation steps for DLP in the Defender baseline for additional guidance.`,
+    licenseRequirements: "N/A",
+  },
+  {
+    id: "MS.EXO.8.4v1",
+    section: "Data Loss Prevention",
+    sectionNumber: 8,
+    title: "At a minimum, the DLP solution SHALL restrict sharing credit card numbers, ITINs, and SSNs via email",
+    description: "The DLP solution must restrict sharing of credit card numbers, U.S. Individual Taxpayer Identification Numbers (ITIN), and U.S. Social Security numbers (SSN) via email.",
+    criticality: "SHALL",
+    rationale: "Users may inadvertently share sensitive information with others who should not have access to it. DLP policies provide a way for agencies to detect and prevent unauthorized disclosures.",
+    lastModified: "May 2024",
+    checkType: "Manual",
+    configurable: false,
+    bod2501: false,
+    notes: [],
+    nistMapping: ["SC-7(10)"],
+    mitreMapping: ["T1567: Exfiltration Over Web Service", "T1048: Exfiltration Over Alternative Protocol", "T1213: Data from Information Repositories", "T1530: Data from Cloud Storage"],
+    resources: [],
+    implementation: `Any product meeting the requirements outlined in this baseline policy may be used. If the agency uses Microsoft Defender, see the implementation steps for protecting PII in the Defender baseline for additional guidance.`,
+    licenseRequirements: "N/A",
+  },
+
+  // ── Section 9 (cont.): Attachment File Type — additional manual controls ──
+  {
+    id: "MS.EXO.9.3v2",
+    section: "Attachment File Type",
+    sectionNumber: 9,
+    title: "Disallowed file types SHALL be determined and enforced",
+    description: "The agency must determine the full list of file types to block and enforce the block via their chosen solution.",
+    criticality: "SHALL",
+    rationale: "Malicious attachments often take the form of click-to-run files, though other file types can contain malicious content as well. Determining the full list of file types to block is left to each organization, in accordance with their risk tolerance.",
+    lastModified: "May 2024",
+    checkType: "Manual",
+    configurable: false,
+    bod2501: false,
+    notes: [],
+    nistMapping: ["SI-3"],
+    mitreMapping: ["T1566: Phishing", "T1566.001: Spearphishing Attachment"],
+    resources: ["https://learn.microsoft.com/en-us/defender-office-365/anti-malware-protection-about#common-attachments-filter-in-anti-malware-policies"],
+    implementation: `Any product meeting the requirements outlined in this baseline policy may be used. If the agency uses Microsoft Defender, see the implementation steps for enabling preset security policies, which disallow click-to-run file types.`,
+    licenseRequirements: "N/A",
+  },
+  {
+    id: "MS.EXO.9.4v1",
+    section: "Attachment File Type",
+    sectionNumber: 9,
+    title: "If a third-party filtering solution is used, it SHOULD offer services comparable to Microsoft Defender's Common Attachment Filter",
+    description: "Any alternative filtering solution should offer services comparable to the Common Attachment Filter in Microsoft Defender.",
+    criticality: "SHOULD",
+    rationale: "Malicious attachments often take the form of click-to-run files. Filtering email attachments based on file types can prevent spread of malware distributed via click-to-run email attachments.",
+    lastModified: "May 2024",
+    checkType: "Manual",
+    configurable: false,
+    bod2501: false,
+    notes: [],
+    nistMapping: ["SI-3"],
+    mitreMapping: ["T1566: Phishing", "T1566.001: Spearphishing Attachment"],
+    resources: ["https://learn.microsoft.com/en-us/defender-office-365/anti-malware-protection-about#common-attachments-filter-in-anti-malware-policies"],
+    implementation: `Any product meeting the requirements outlined in this baseline policy may be used. If the agency uses Microsoft Defender, see the implementation steps for enabling preset security policies, which disallow click-to-run file types.`,
+    licenseRequirements: "N/A",
+  },
+  {
+    id: "MS.EXO.9.5v1",
+    section: "Attachment File Type",
+    sectionNumber: 9,
+    title: "At a minimum, click-to-run files SHOULD be blocked (e.g., .exe, .cmd, and .vbe)",
+    description: "At minimum, common executable file types should be blocked to reduce the risk of malware delivery.",
+    criticality: "SHOULD",
+    rationale: "Malicious attachments often take the form of click-to-run files. Blocking common executable files helps mitigate the risk of adversarial exploitation.",
+    lastModified: "May 2024",
+    checkType: "Manual",
+    configurable: false,
+    bod2501: false,
+    notes: [],
+    nistMapping: ["SI-3"],
+    mitreMapping: ["T1566: Phishing", "T1566.001: Spearphishing Attachment"],
+    resources: ["https://learn.microsoft.com/en-us/defender-office-365/anti-malware-protection-about#common-attachments-filter-in-anti-malware-policies"],
+    implementation: `Any product meeting the requirements outlined in this baseline policy may be used. If the agency uses Microsoft Defender, see the implementation steps for enabling preset security policies, which disallow click-to-run file types.`,
+    licenseRequirements: "N/A",
+  },
+
+  // ── Section 10 (cont.): Malware Scanning — additional manual control ──
+  {
+    id: "MS.EXO.10.3v1",
+    section: "Malware Scanning",
+    sectionNumber: 10,
+    title: "Email scanning SHALL be capable of reviewing emails after delivery",
+    description: "The malware scanning solution must be able to retroactively scan and remove malware from emails already delivered to user mailboxes.",
+    criticality: "SHALL",
+    rationale: "As known malware signatures are updated, it is possible for an email to be retroactively identified as containing malware after delivery. Scanning emails after delivery can reduce the number of malware-infected emails in users' mailboxes.",
+    lastModified: "June 2023",
+    checkType: "Manual",
+    configurable: false,
+    bod2501: false,
+    notes: [],
+    nistMapping: ["SI-3"],
+    mitreMapping: ["T1566: Phishing", "T1566.001: Spearphishing Attachment"],
+    resources: [],
+    implementation: `Any product meeting the requirements outlined in this baseline policy may be used. If the agency uses Microsoft Defender, see the implementation steps for enabling preset security policies, which include zero-hour auto purge (ZAP) to retroactively detect malware in messages already delivered to mailboxes and remove them.`,
+    licenseRequirements: "N/A",
+  },
+
+  // ── Section 11: Phishing Protections ──
+  {
+    id: "MS.EXO.11.1v1",
+    section: "Phishing Protections",
+    sectionNumber: 11,
+    title: "Impersonation protection checks SHOULD be used",
+    description: "Impersonation protection should be used to identify senders that appear to be impersonating known entities.",
+    criticality: "SHOULD",
+    rationale: "Users might not be able to reliably identify phishing emails, especially if the FROM address is nearly indistinguishable from that of a known entity. By automatically identifying senders who appear to be impersonating known senders, the risk of a successful phishing attempt can be reduced.",
+    lastModified: "June 2023",
+    checkType: "Manual",
+    configurable: false,
+    bod2501: false,
+    notes: [],
+    nistMapping: ["SI-8"],
+    mitreMapping: ["T1566: Phishing", "T1656: Impersonation"],
+    resources: [],
+    implementation: `Any product meeting the requirements outlined in this baseline policy may be used. If the agency uses Microsoft Defender, see the implementation steps for enabling impersonation protection in the Defender baseline.`,
+    licenseRequirements: "Defender for Office 365 Plan 1 or 2 (included with E5/G5, add-on for E3/G3)",
+  },
+  {
+    id: "MS.EXO.11.2v1",
+    section: "Phishing Protections",
+    sectionNumber: 11,
+    title: "User warnings, comparable to the user safety tips included with EOP, SHOULD be displayed",
+    description: "User safety tips or equivalent warnings should be displayed to alert users about potential phishing messages.",
+    criticality: "SHOULD",
+    rationale: "Many tasks are better suited for automated processes, such as identifying unusual characters in the FROM address or identifying a first-time sender. User warnings can handle these tasks, reducing the burden on end users and the risk of successful phishing attempts.",
+    lastModified: "June 2023",
+    checkType: "Manual",
+    configurable: false,
+    bod2501: false,
+    notes: [],
+    nistMapping: ["AT-2b", "SI-8"],
+    mitreMapping: ["T1566: Phishing", "T1656: Impersonation"],
+    resources: [],
+    implementation: `Any product meeting the requirements outlined in this baseline policy may be used. If the agency uses Microsoft Defender, see the implementation steps for enabling preset security policies which include user safety tips to warn users.`,
+    licenseRequirements: "N/A",
+  },
+  {
+    id: "MS.EXO.11.3v1",
+    section: "Phishing Protections",
+    sectionNumber: 11,
+    title: "The phishing protection solution SHOULD include an AI-based phishing detection tool comparable to EOP Mailbox Intelligence",
+    description: "The anti-phishing solution should use AI-based detection, such as Mailbox Intelligence, to improve phishing detection rates.",
+    criticality: "SHOULD",
+    rationale: "Phishing attacks can result in unauthorized data disclosure and unauthorized access. Using AI-based phishing detection tools to improve the detection rate of phishing attempts helps reduce the risk of successful phishing attacks.",
+    lastModified: "June 2023",
+    checkType: "Manual",
+    configurable: false,
+    bod2501: false,
+    notes: [],
+    nistMapping: ["SI-8"],
+    mitreMapping: ["T1566: Phishing", "T1656: Impersonation"],
+    resources: [],
+    implementation: `Any product meeting the requirements outlined in this baseline policy may be used. If the agency uses Microsoft Defender, see the implementation steps for enabling preset security policies which include mailbox intelligence for detecting phishing attacks using AI.`,
+    licenseRequirements: "Defender for Office 365 Plan 1 or 2 (included with E5/G5, add-on for E3/G3)",
+  },
+
+  // ── Section 12 (cont.): IP Allow Lists — additional automated control ──
+  {
+    id: "MS.EXO.12.2v1",
+    section: "IP Allow Lists",
+    sectionNumber: 12,
+    title: "Safe lists SHOULD NOT be enabled",
+    description: "Safe lists should not be enabled as messages from allowed safe list addresses bypass important security mechanisms.",
+    criticality: "SHOULD",
+    rationale: "Messages sent from allowed safe list addresses bypass important security mechanisms, including spam filtering and sender authentication checks. Avoiding use of safe lists prevents potential threats from circumventing security mechanisms.",
+    lastModified: "June 2023",
+    checkType: "Automated",
+    configurable: false,
+    bod2501: false,
+    notes: ["A connection filter MAY be implemented to create an IP block list."],
+    nistMapping: ["AC-4"],
+    mitreMapping: [],
+    resources: ["https://learn.microsoft.com/en-us/microsoft-365/security/office-365-security/connection-filter-policies-configure"],
+    implementation: `1. Sign in to the Microsoft 365 Defender portal.
+2. From the left-hand menu, find Email & collaboration and select Policies and Rules.
+3. Select Threat Policies from the list of policy names.
+4. Under Policies, select Anti-spam.
+5. Select Connection filter policy (Default).
+6. Click Edit connection filter policy.
+7. (Optional) Enter addresses under Always block messages from the following IP addresses or address range as needed.
+8. Ensure Turn on safe list is not selected.`,
+    licenseRequirements: "N/A",
+  },
+
+  // ── Section 14 (cont.): Inbound Anti-Spam — additional manual controls ──
+  {
+    id: "MS.EXO.14.2v1",
+    section: "Inbound Anti-Spam Protections",
+    sectionNumber: 14,
+    title: "Spam and high confidence spam SHALL be moved to either the junk email folder or the quarantine folder",
+    description: "Spam messages must be moved to a separate junk or quarantine folder to prevent users from interacting with potentially malicious content.",
+    criticality: "SHALL",
+    rationale: "Moving spam messages to a separate junk or quarantine folder helps users filter out spam while still giving them the ability to review messages, as needed, in case a message is filtered incorrectly.",
+    lastModified: "June 2023",
+    checkType: "Manual",
+    configurable: false,
+    bod2501: false,
+    notes: [],
+    nistMapping: ["SI-8"],
+    mitreMapping: ["T1566: Phishing"],
+    resources: ["https://learn.microsoft.com/en-us/defender-office-365/anti-spam-policies-configure"],
+    implementation: `Any product meeting the requirements outlined in this baseline policy may be used. If the agency uses Microsoft Defender, see the implementation steps for enabling preset security policies, which include spam filtering that moves high confidence spam to either the junk or quarantine folder.`,
+    licenseRequirements: "N/A",
+  },
+  {
+    id: "MS.EXO.14.3v1",
+    section: "Inbound Anti-Spam Protections",
+    sectionNumber: 14,
+    title: "Allowed domains SHALL NOT be added to inbound anti-spam protection policies",
+    description: "Allowed domains must not be added to anti-spam policies as this allows a large number of potentially unknown users to bypass spam protections.",
+    criticality: "SHALL",
+    rationale: "Legitimate emails may be incorrectly filtered by spam protections. Adding allowed senders is an acceptable method of combating false positives. However, allowing an entire domain provides for a large number of potentially unknown users to bypass spam protections.",
+    lastModified: "June 2023",
+    checkType: "Manual",
+    configurable: false,
+    bod2501: false,
+    notes: ["Allowed senders MAY be added."],
+    nistMapping: ["SI-8"],
+    mitreMapping: ["T1566: Phishing"],
+    resources: ["https://learn.microsoft.com/en-us/defender-office-365/anti-spam-policies-configure"],
+    implementation: `Any product meeting the requirements outlined in this baseline policy may be used. If the agency uses Microsoft Defender, see the implementation steps for enabling preset security policies, which do not include any allowed sender domains by default.`,
+    licenseRequirements: "N/A",
+  },
+  {
+    id: "MS.EXO.14.4v1",
+    section: "Inbound Anti-Spam Protections",
+    sectionNumber: 14,
+    title: "If a third-party filtering solution is used, it SHOULD offer services comparable to the native spam filtering offered by Microsoft",
+    description: "Any alternative spam filtering product should offer comparable services to Microsoft's native spam filtering.",
+    criticality: "SHOULD",
+    rationale: "Filtering out spam reduces user workload burden, prevents junk mail congestion, and reduces potentially malicious content exposure.",
+    lastModified: "May 2024",
+    checkType: "Manual",
+    configurable: false,
+    bod2501: false,
+    notes: [],
+    nistMapping: ["SI-8"],
+    mitreMapping: ["T1566: Phishing"],
+    resources: ["https://learn.microsoft.com/en-us/defender-office-365/anti-spam-policies-configure"],
+    implementation: `Any product meeting the requirements outlined in this baseline policy may be used. If the agency uses Microsoft Defender, see the implementation steps for enabling preset security policies, which include spam filtering.`,
+    licenseRequirements: "N/A",
+  },
+
+  // ── Section 15: Link Protection ──
+  {
+    id: "MS.EXO.15.1v1",
+    section: "Link Protection",
+    sectionNumber: 15,
+    title: "URL comparison with a block-list SHOULD be enabled",
+    description: "Emails should be scanned for URLs that match a known block-list of malicious sites.",
+    criticality: "SHOULD",
+    rationale: "Users may be directed to malicious websites via links in email. Blocking access to known, malicious URLs can prevent users from accessing known malicious websites.",
+    lastModified: "June 2023",
+    checkType: "Manual",
+    configurable: false,
+    bod2501: false,
+    notes: [],
+    nistMapping: ["SI-3"],
+    mitreMapping: ["T1566: Phishing", "T1566.002: Spearphishing Link"],
+    resources: [],
+    implementation: `Any product meeting the requirements outlined in this baseline policy may be used. If the agency uses Microsoft Defender for Office 365, see the implementation steps for enabling preset security policies, which include Safe Links protections to scan URLs in email messages against a list of known, malicious links.`,
+    licenseRequirements: "N/A",
+  },
+  {
+    id: "MS.EXO.15.2v1",
+    section: "Link Protection",
+    sectionNumber: 15,
+    title: "Direct download links SHOULD be scanned for malware",
+    description: "URLs in emails that point to downloadable files should be scanned in real-time for known malware.",
+    criticality: "SHOULD",
+    rationale: "URLs in emails may direct users to download and run malware. Scanning direct download links in real-time for known malware and blocking access can prevent users from infecting their devices.",
+    lastModified: "June 2023",
+    checkType: "Manual",
+    configurable: false,
+    bod2501: false,
+    notes: [],
+    nistMapping: ["SI-3"],
+    mitreMapping: ["T1566: Phishing", "T1566.002: Spearphishing Link"],
+    resources: [],
+    implementation: `Any product meeting the requirements outlined in this baseline policy may be used. If the agency uses Microsoft Defender for Office 365, see the implementation steps for enabling preset security policies, which include Safe Links protections to scan links to files for malware.`,
+    licenseRequirements: "N/A",
+  },
+  {
+    id: "MS.EXO.15.3v1",
+    section: "Link Protection",
+    sectionNumber: 15,
+    title: "User click tracking SHOULD be enabled",
+    description: "Click tracking should be enabled so that agencies can identify when users click on malicious links.",
+    criticality: "SHOULD",
+    rationale: "Users may click on malicious links in emails, leading to compromise or unauthorized data disclosure. Enabling user click tracking lets agencies know if a malicious link may have been visited after the fact to help tailor a response to a potential incident.",
+    lastModified: "June 2023",
+    checkType: "Manual",
+    configurable: false,
+    bod2501: false,
+    notes: [],
+    nistMapping: ["SI-3", "AU-12c"],
+    mitreMapping: ["T1566: Phishing", "T1566.002: Spearphishing Link"],
+    resources: [],
+    implementation: `Any product meeting the requirements outlined in this baseline policy may be used. If the agency uses Microsoft Defender for Office 365, see the implementation steps for enabling preset security policies, which include Safe Links click protections to track user clicks on links in email.`,
+    licenseRequirements: "N/A",
+  },
+
+  // ── Section 16: Alerts ──
+  {
+    id: "MS.EXO.16.1v1",
+    section: "Alerts",
+    sectionNumber: 16,
+    title: "At a minimum, the required alerts SHALL be enabled",
+    description: "The following alerts must be enabled: Suspicious email sending patterns detected, Suspicious Connector Activity, Suspicious Email Forwarding Activity, Messages have been delayed, Tenant restricted from sending unprovisioned email, Tenant restricted from sending email, and A potentially malicious URL click was detected.",
+    criticality: "SHALL",
+    rationale: "Potentially malicious or service impacting events may go undetected without a means of detecting these events. Setting up a mechanism to alert administrators to these events draws attention to them to help minimize impact to users and the agency.",
+    lastModified: "June 2023",
+    checkType: "Manual",
+    configurable: false,
+    bod2501: false,
+    notes: [],
+    nistMapping: ["SI-4(5)"],
+    mitreMapping: ["T1078: Valid Accounts", "T1078.004: Cloud Accounts", "T1562: Impair Defenses", "T1566: Phishing", "T1566.002: Spearphishing Link"],
+    resources: [],
+    implementation: `Any product meeting the requirements outlined in this baseline policy may be used. If the agency uses Microsoft 365 alert policies, see the implementation steps for enabling alerts in the Defender baseline for additional guidance. Ensure the following alerts are enabled:\n- Suspicious email sending patterns detected\n- Suspicious Connector Activity\n- Suspicious Email Forwarding Activity\n- Messages have been delayed\n- Tenant restricted from sending unprovisioned email\n- Tenant restricted from sending email\n- A potentially malicious URL click was detected`,
+    licenseRequirements: "N/A",
+  },
+  {
+    id: "MS.EXO.16.2v1",
+    section: "Alerts",
+    sectionNumber: 16,
+    title: "The alerts SHOULD be sent to a monitored address or incorporated into a SIEM system",
+    description: "Alerts should be directed to a monitored email address or integrated into a security information and event management (SIEM) system for timely response.",
+    criticality: "SHOULD",
+    rationale: "Suspicious or malicious events, if not resolved promptly, may have a greater impact to users and the agency. Sending alerts to a monitored email address or SIEM system helps ensure these events are acted upon in a timely manner.",
+    lastModified: "June 2023",
+    checkType: "Manual",
+    configurable: false,
+    bod2501: false,
+    notes: [],
+    nistMapping: ["SI-4(12)"],
+    mitreMapping: ["T1562: Impair Defenses", "T1562.006: Indicator Blocking"],
+    resources: [],
+    implementation: `Any product meeting the requirements outlined in this baseline policy may be used. If the agency uses Microsoft 365 alert policies, see the implementation steps to add email recipients to an alert in the Defender baseline for additional guidance.`,
+    licenseRequirements: "N/A",
+  },
+
+  // ── Section 17: Audit Logging ──
+  {
+    id: "MS.EXO.17.1v1",
+    section: "Audit Logging",
+    sectionNumber: 17,
+    title: "Unified Audit logging SHALL be enabled",
+    description: "Unified Audit logging must be enabled to capture user and admin activities across Microsoft 365 services.",
+    criticality: "SHALL",
+    rationale: "Responding to incidents without detailed information about activities that took place slows response actions. Enabling Unified Audit logging helps ensure agencies have visibility into user actions. Furthermore, enabling the Unified Audit log is required for government agencies by OMB M-21-31.",
+    lastModified: "March 2025",
+    checkType: "Manual",
+    configurable: false,
+    bod2501: false,
+    notes: [],
+    nistMapping: ["AU-12"],
+    mitreMapping: ["T1562: Impair Defenses", "T1562.008: Disable or Modify Cloud Logs"],
+    resources: ["https://learn.microsoft.com/en-us/purview/audit-log-export-records"],
+    implementation: `See the implementation steps for enabling Unified Audit logging in the Defender baseline for additional guidance.\n1. Sign in to the Microsoft Purview compliance portal.\n2. Navigate to Audit.\n3. If auditing is not enabled, click 'Start recording user and admin activity'.\n4. Alternatively, use PowerShell: Set-AdminAuditLogConfig -UnifiedAuditLogIngestionEnabled $true`,
+    licenseRequirements: "N/A",
+  },
+  {
+    id: "MS.EXO.17.3v1",
+    section: "Audit Logging",
+    sectionNumber: 17,
+    title: "Audit logs SHALL be maintained for at least the minimum duration dictated by OMB M-21-31",
+    description: "Audit logs must be retained for at least 12 months in active storage and 18 months in cold storage per OMB M-21-31, Appendix C.",
+    criticality: "SHALL",
+    rationale: "Increased log retention time gives an agency the necessary visibility to investigate incidents that occurred some time ago. OMB M-21-31, Appendix C, Table 5 specifically calls out Unified Audit Logs in the Cloud Azure log category.",
+    lastModified: "June 2023",
+    checkType: "Manual",
+    configurable: false,
+    bod2501: false,
+    notes: ["Microsoft 365 Purview (Premium) provides a default audit log retention policy retaining records for one year. Additional record types require custom audit retention policies. Agencies may also consider alternate storage locations."],
+    nistMapping: ["AU-11"],
+    mitreMapping: ["T1070: Indicator Removal", "T1562: Impair Defenses", "T1562.008: Disable or Modify Cloud Logs"],
+    resources: [
+      "https://learn.microsoft.com/en-us/purview/audit-log-retention-policies",
+      "https://learn.microsoft.com/en-us/purview/audit-log-export-records",
+    ],
+    implementation: `See the implementation steps to create an audit retention policy in the Defender baseline for additional guidance.\n1. Sign in to the Microsoft Purview compliance portal.\n2. Navigate to Audit > Audit retention policies.\n3. Create a new retention policy to retain logs for at least 12 months.\n4. Ensure logs are also exported to cold storage for an additional 18 months if required.`,
+    licenseRequirements: "Microsoft 365 Audit (Premium) — E5/G5 license or E3/G3 with add-on compliance license",
+  },
 ];
 
 // ══════════════════════════════════════════════════════════════
@@ -1474,11 +1909,11 @@ export const EXO_BASELINE_CONTROLS: BaselineControl[] = [
 
 export const DEFENDER_SECTIONS: Record<number, string> = {
   1: "Preset Security Profiles",
-  2: "Safe Links",
+  2: "Impersonation Protection",
   3: "Safe Attachments",
-  4: "Anti-Phishing Protections",
-  5: "Inbound Anti-Spam Protections",
-  6: "Zero-hour Auto Purge",
+  4: "Data Loss Prevention",
+  5: "Alerts",
+  6: "Audit Logging",
 };
 
 export const DEFENDER_BASELINE_CONTROLS: BaselineControl[] = [
@@ -1526,6 +1961,91 @@ export const DEFENDER_BASELINE_CONTROLS: BaselineControl[] = [
 3. Apply to specific groups containing high-risk or priority users.
 4. Click Confirm.`,
     licenseRequirements: "Microsoft Defender for Office 365 Plan 1",
+  },
+  {
+    id: "MS.DEFENDER.1.3v1",
+    section: "Preset Security Profiles",
+    sectionNumber: 1,
+    title: "All users SHALL be added to Defender for Office 365 protection in either the standard or strict preset security policy",
+    description: "All users must be included in Defender for Office 365 protection via either the standard or strict preset security policy to ensure secure defaults are applied.",
+    criticality: "SHALL",
+    rationale: "Important user protections are provided by Defender for Office 365 protection, including safe attachments and safe links. By using the preset policies, administrators can help ensure all new and existing users have secure defaults applied automatically.",
+    lastModified: "June 2023",
+    checkType: "Automated",
+    configurable: false,
+    bod2501: true,
+    notes: [],
+    nistMapping: ["CM-6a", "SI-3a", "SI-8"],
+    mitreMapping: [
+      "T1566: Phishing",
+      "T1566.001: Spearphishing Attachment",
+      "T1566.002: Spearphishing Link",
+      "T1566.003: Spearphishing via Service",
+    ],
+    resources: ["https://learn.microsoft.com/en-us/microsoft-365/security/office-365-security/preset-security-policies"],
+    implementation: `1. Sign in to Microsoft 365 Defender.
+2. Go to Email & Collaboration > Policies & Rules > Threat Policies > Preset Security Policies.
+3. Under Standard or Strict protection, select Manage protection settings.
+4. On the Apply Defender for Office 365 protection page, select All recipients.
+5. Click Next until the Review page, then Confirm.`,
+    licenseRequirements: "Defender for Office 365 Plan 1 or 2",
+  },
+  {
+    id: "MS.DEFENDER.1.4v1",
+    section: "Preset Security Profiles",
+    sectionNumber: 1,
+    title: "Sensitive accounts SHALL be added to Exchange Online Protection in the strict preset security policy",
+    description: "Sensitive accounts must be included in the strict preset security policy for Exchange Online Protection to mitigate their elevated risk to email threats.",
+    criticality: "SHALL",
+    rationale: "Unauthorized access to a sensitive account may result in greater harm than a standard user account. Adding sensitive accounts to the strict preset security policy better mitigates their elevated risk to email threats.",
+    lastModified: "June 2023",
+    checkType: "Automated",
+    configurable: true,
+    bod2501: true,
+    notes: [],
+    nistMapping: ["CM-6a", "SI-3a", "SI-8"],
+    mitreMapping: [
+      "T1566: Phishing",
+      "T1566.001: Spearphishing Attachment",
+      "T1566.002: Spearphishing Link",
+    ],
+    resources: ["https://learn.microsoft.com/en-us/microsoft-365/security/office-365-security/preset-security-policies"],
+    implementation: `1. Sign in to Microsoft 365 Defender.
+2. Go to Email & Collaboration > Policies & Rules > Threat Policies > Preset Security Policies.
+3. Under Strict protection, select Manage protection settings.
+4. On the Apply Exchange Online Protection page, select Specific recipients.
+5. Add all sensitive accounts via the User and Group boxes.
+6. Click Next until the Review page, then Confirm.`,
+    licenseRequirements: "Defender for Office 365 Plan 1 or 2",
+  },
+  {
+    id: "MS.DEFENDER.1.5v1",
+    section: "Preset Security Profiles",
+    sectionNumber: 1,
+    title: "Sensitive accounts SHALL be added to Defender for Office 365 protection in the strict preset security policy",
+    description: "Sensitive accounts must be included in the strict preset security policy for Defender for Office 365 protection to mitigate their elevated risk.",
+    criticality: "SHALL",
+    rationale: "Unauthorized access to a sensitive account may result in greater harm than to a standard user account. Adding sensitive accounts to the strict preset security policy better mitigates their elevated risk.",
+    lastModified: "June 2023",
+    checkType: "Automated",
+    configurable: true,
+    bod2501: true,
+    notes: [],
+    nistMapping: ["CM-6a", "SI-3a", "SI-8"],
+    mitreMapping: [
+      "T1566: Phishing",
+      "T1566.001: Spearphishing Attachment",
+      "T1566.002: Spearphishing Link",
+    ],
+    resources: ["https://learn.microsoft.com/en-us/microsoft-365/security/office-365-security/preset-security-policies"],
+    implementation: `1. Sign in to Microsoft 365 Defender.
+2. Go to Email & Collaboration > Policies & Rules > Threat Policies > Preset Security Policies.
+3. Under Strict protection, select Manage protection settings.
+4. Navigate to the Apply Defender for Office 365 protection page.
+5. Select Specific recipients or Previously selected recipients if already set on the EOP page.
+6. Add all sensitive accounts.
+7. Click Next until the Review page, then Confirm.`,
+    licenseRequirements: "Defender for Office 365 Plan 1 or 2",
   },
   {
     id: "MS.DEFENDER.2.1v1",
@@ -1657,6 +2177,137 @@ export const DEFENDER_BASELINE_CONTROLS: BaselineControl[] = [
     licenseRequirements: "Microsoft Defender for Office 365 Plan 1",
   },
   {
+    id: "MS.DEFENDER.4.2v1",
+    section: "Data Loss Prevention",
+    sectionNumber: 4,
+    title: "The DLP policy SHOULD be applied to Exchange, OneDrive, SharePoint, Teams chat, and Devices",
+    description: "DLP policies should cover all affected M365 service locations and endpoint devices to prevent unauthorized disclosures.",
+    criticality: "SHOULD",
+    rationale: "Unauthorized disclosures may happen through M365 services or endpoint devices. DLP policies should cover all affected locations to be effective.",
+    lastModified: "June 2023",
+    checkType: "Automated",
+    configurable: false,
+    bod2501: false,
+    notes: [],
+    nistMapping: ["SC-7(10)"],
+    mitreMapping: [
+      "T1567: Exfiltration Over Web Service",
+      "T1530: Data from Cloud Storage",
+      "T1213: Data from Information Repositories",
+    ],
+    resources: [],
+    implementation: `See MS.DEFENDER.4.1 instructions step 8 for details on enforcing DLP policy in specific M365 service locations.`,
+    licenseRequirements: "DLP for Teams requires E5/G5",
+  },
+  {
+    id: "MS.DEFENDER.4.3v1",
+    section: "Data Loss Prevention",
+    sectionNumber: 4,
+    title: "The action for the DLP policy SHOULD be set to block sharing sensitive information with everyone",
+    description: "DLP policy actions should block sharing of sensitive information unless explicitly allowed based on agency policies.",
+    criticality: "SHOULD",
+    rationale: "Access to sensitive information should be prohibited unless explicitly allowed. Specific exemptions can be made based on agency policies and valid business justifications.",
+    lastModified: "June 2023",
+    checkType: "Automated",
+    configurable: false,
+    bod2501: false,
+    notes: [],
+    nistMapping: ["AC-3", "SC-7(10)"],
+    mitreMapping: [
+      "T1567: Exfiltration Over Web Service",
+      "T1530: Data from Cloud Storage",
+      "T1213: Data from Information Repositories",
+    ],
+    resources: [],
+    implementation: `See MS.DEFENDER.4.1 instructions steps 15-17 for configuring DLP policy to block sharing sensitive information.`,
+    licenseRequirements: "N/A",
+  },
+  {
+    id: "MS.DEFENDER.4.4v1",
+    section: "Data Loss Prevention",
+    sectionNumber: 4,
+    title: "Notifications to inform and educate users on proper use of sensitive information SHOULD be enabled",
+    description: "DLP policy notifications should be enabled to educate users about proper handling of sensitive information.",
+    criticality: "SHOULD",
+    rationale: "Some users may not be aware of agency policies on proper use of sensitive information. Enabling notifications provides positive feedback to users when accessing sensitive information.",
+    lastModified: "June 2023",
+    checkType: "Automated",
+    configurable: false,
+    bod2501: false,
+    notes: [],
+    nistMapping: ["AT-2b"],
+    mitreMapping: [],
+    resources: [],
+    implementation: `See MS.DEFENDER.4.1 instructions steps 18-19 for configuring DLP policy to notify users.`,
+    licenseRequirements: "N/A",
+  },
+  {
+    id: "MS.DEFENDER.4.5v1",
+    section: "Data Loss Prevention",
+    sectionNumber: 4,
+    title: "A list of apps restricted from accessing DLP-protected files SHOULD be defined",
+    description: "A list of apps that are restricted from accessing files protected by DLP policies should be defined to prevent unauthorized access on endpoints.",
+    criticality: "SHOULD",
+    rationale: "Some apps may inappropriately share accessed files or not conform to agency policies for access to sensitive information. Defining a list of those apps makes it possible to use DLP policies to restrict those apps' access to sensitive information on endpoints.",
+    lastModified: "June 2023",
+    checkType: "Manual",
+    configurable: false,
+    bod2501: false,
+    notes: [],
+    nistMapping: ["SC-7(10)"],
+    mitreMapping: [
+      "T1565: Data Manipulation",
+      "T1485: Data Destruction",
+      "T1530: Data from Cloud Storage",
+    ],
+    resources: [],
+    implementation: `1. Sign in to the Microsoft Purview portal.
+2. Go to Settings > Data loss prevention.
+3. Go to Endpoint DLP Settings.
+4. Go to Restricted apps and app groups.
+5. Click Add or edit Restricted Apps.
+6. Enter app and executable names to disallow.
+7. Go to Unallowed Bluetooth apps.
+8. Click Add or edit unallowed Bluetooth apps.
+9. Enter app and executable names.`,
+    licenseRequirements: "E5 or G5",
+  },
+  {
+    id: "MS.DEFENDER.4.6v1",
+    section: "Data Loss Prevention",
+    sectionNumber: 4,
+    title: "The DLP policy SHOULD include an action to block restricted apps and unwanted Bluetooth applications",
+    description: "A DLP policy action should be defined to block access from restricted apps and unwanted Bluetooth applications to prevent unauthorized disclosure.",
+    criticality: "SHOULD",
+    rationale: "Some apps may inappropriately share accessed files or not conform to agency policies. Defining a DLP policy action to block access from restricted apps prevents unauthorized disclosure.",
+    lastModified: "June 2023",
+    checkType: "Manual",
+    configurable: false,
+    bod2501: false,
+    notes: ["This action can only be included if at least one device is onboarded to the agency tenant."],
+    nistMapping: ["AC-19a"],
+    mitreMapping: [
+      "T1565: Data Manipulation",
+      "T1485: Data Destruction",
+      "T1530: Data from Cloud Storage",
+      "T1486: Data Encrypted for Impact",
+    ],
+    resources: [],
+    implementation: `1. Sign in to the Microsoft Purview portal.
+2. Under Solutions, select Data loss prevention.
+3. Select Policies.
+4. Find the custom DLP policy and click to select.
+5. Select Edit Policy.
+6. Navigate to Advanced DLP rules.
+7. Select the relevant rule and edit.
+8. Under Actions, click Add an action.
+9. Choose Audit or restrict activities on device.
+10. Check Copy or move using unallowed Bluetooth app and set to Block.
+11. Check Access by restricted apps and set to Block.
+12. Save and submit.`,
+    licenseRequirements: "E5 or G5",
+  },
+  {
     id: "MS.DEFENDER.5.1v1",
     section: "Inbound Anti-Spam Protections",
     sectionNumber: 5,
@@ -1675,6 +2326,35 @@ export const DEFENDER_BASELINE_CONTROLS: BaselineControl[] = [
     implementation: `1. In the Microsoft 365 Defender portal, navigate to Anti-spam policies.
 2. Edit each policy.
 3. Remove any entries from the Allowed domains list.`,
+    licenseRequirements: "N/A",
+  },
+  {
+    id: "MS.DEFENDER.5.2v1",
+    section: "Alerts",
+    sectionNumber: 5,
+    title: "Alerts SHOULD be sent to a monitored address or incorporated into a SIEM",
+    description: "Security alerts should be sent to a monitored email address or incorporated into a SIEM system to ensure timely response to suspicious events.",
+    criticality: "SHOULD",
+    rationale: "Suspicious or malicious events, if not resolved promptly, may have a greater impact to users and the agency. Sending alerts to a monitored email address or SIEM system helps ensure events are acted upon in a timely manner.",
+    lastModified: "June 2023",
+    checkType: "Manual",
+    configurable: false,
+    bod2501: false,
+    notes: [],
+    nistMapping: ["SI-4(5)"],
+    mitreMapping: [
+      "T1562: Impair Defenses",
+      "T1562.006: Indicator Blocking",
+    ],
+    resources: [],
+    implementation: `1. Sign in to Microsoft 365 Defender.
+2. Under Email & collaboration, select Policies & rules.
+3. Select Alert Policy.
+4. Click the alert policy to modify.
+5. Click the pencil icon next to Set your recipients.
+6. Check the Opt-In for email notifications box.
+7. Add email addresses to the Email recipients text box.
+8. Click Next, then Submit.`,
     licenseRequirements: "N/A",
   },
   {
@@ -1698,6 +2378,27 @@ export const DEFENDER_BASELINE_CONTROLS: BaselineControl[] = [
 3. In anti-spam policies, ensure ZAP for spam and ZAP for phishing are both enabled.`,
     licenseRequirements: "N/A",
   },
+  {
+    id: "MS.DEFENDER.6.3v1",
+    section: "Audit Logging",
+    sectionNumber: 6,
+    title: "Audit logs SHALL be maintained for at least the minimum duration dictated by OMB M-21-31",
+    description: "Audit logs must be retained for at least the minimum duration specified by OMB M-21-31 to ensure sufficient visibility for incident investigation.",
+    criticality: "SHALL",
+    rationale: "Audit logs may no longer be available when needed if they are not retained for a sufficient time. Increased log retention time gives an agency the necessary visibility to investigate incidents that occurred some time ago.",
+    lastModified: "June 2023",
+    checkType: "Manual",
+    configurable: false,
+    bod2501: false,
+    notes: ["Purview Audit (Premium) provides a default audit log retention policy retaining certain records for one year. Additional record types require custom audit retention policies."],
+    nistMapping: ["AU-11"],
+    mitreMapping: ["T1070: Indicator Removal"],
+    resources: [],
+    implementation: `1. Create one or more custom audit retention policies if the default retention policy is not sufficient.
+2. Follow instructions at Microsoft Learn for creating audit log retention policies.
+3. Ensure the duration selected is at least one year per OMB M-21-31.`,
+    licenseRequirements: "Microsoft Purview Audit (Premium) requires E5/G5 or E3/G3 with add-on compliance licenses",
+  },
 ];
 
 // ══════════════════════════════════════════════════════════════
@@ -1710,6 +2411,8 @@ export const POWERPLATFORM_SECTIONS: Record<number, string> = {
   2: "Data Loss Prevention (DLP) Policies",
   3: "Tenant Isolation",
   4: "Power Apps Content Security Policy",
+  5: "Power Pages Creation",
+  6: "Power Apps Sharing Controls",
 };
 
 export const POWERPLATFORM_BASELINE_CONTROLS: BaselineControl[] = [
@@ -1844,6 +2547,30 @@ export const POWERPLATFORM_BASELINE_CONTROLS: BaselineControl[] = [
     licenseRequirements: "N/A",
   },
   {
+    id: "MS.POWERPLATFORM.3.2v1",
+    section: "Tenant Isolation",
+    sectionNumber: 3,
+    title: "An inbound/outbound connection allowlist SHOULD be configured",
+    description: "A tenant isolation allowlist should be configured to control which external tenants can connect to the Power Platform environment.",
+    criticality: "SHOULD",
+    rationale: "By default, tenant isolation blocks all external connections. If legitimate cross-tenant connections are needed, they should be explicitly allowed rather than disabling tenant isolation entirely.",
+    lastModified: "June 2023",
+    checkType: "Manual",
+    configurable: false,
+    bod2501: false,
+    notes: ["This policy only applies if tenant isolation is enabled (MS.POWERPLATFORM.3.1v1)."],
+    nistMapping: ["AC-4"],
+    mitreMapping: ["T1048: Exfiltration Over Alternative Protocol"],
+    resources: ["https://learn.microsoft.com/en-us/power-platform/admin/cross-tenant-restrictions"],
+    implementation: `1. Sign in to the Power Platform admin center.
+2. Select Policies > Tenant isolation.
+3. Set tenant isolation to Enabled (if not already via MS.POWERPLATFORM.3.1).
+4. Under Tenant isolation rules, add rules for specific tenants that should be allowed.
+5. For each rule, specify the tenant domain or ID and choose the direction (Inbound, Outbound, or Both).
+6. Save.`,
+    licenseRequirements: "N/A",
+  },
+  {
     id: "MS.POWERPLATFORM.4.1v1",
     section: "Power Apps Content Security Policy",
     sectionNumber: 4,
@@ -1865,6 +2592,51 @@ export const POWERPLATFORM_BASELINE_CONTROLS: BaselineControl[] = [
 4. Configure the allowed domains list as needed.`,
     licenseRequirements: "N/A",
   },
+  {
+    id: "MS.POWERPLATFORM.5.1v1",
+    section: "Power Pages Creation",
+    sectionNumber: 5,
+    title: "Power Pages creation SHOULD be restricted to admins",
+    description: "Only administrators should be allowed to create new Power Pages sites.",
+    criticality: "SHOULD",
+    rationale: "Power Pages sites are publicly accessible by default. Restricting creation to administrators helps ensure that new sites are created with proper security configurations and oversight.",
+    lastModified: "June 2023",
+    checkType: "Automated",
+    configurable: false,
+    bod2501: false,
+    notes: [],
+    nistMapping: ["CM-2"],
+    mitreMapping: ["T1190: Exploit Public-Facing Application"],
+    resources: ["https://learn.microsoft.com/en-us/power-pages/admin/admin-roles"],
+    implementation: `1. Sign in to the Power Platform admin center.
+2. Select Settings > Power Pages settings.
+3. Under Who can create Power Pages sites, select Only specific admins.
+4. Save.`,
+    licenseRequirements: "N/A",
+  },
+  {
+    id: "MS.POWERPLATFORM.6.1v1",
+    section: "Power Apps Sharing Controls",
+    sectionNumber: 6,
+    title: "The ability to share Power Apps with the entire organization (Share with Everyone) SHOULD be disabled",
+    description: "Power Apps should not be shareable with the entire organization by default to prevent accidental over-sharing.",
+    criticality: "SHOULD",
+    rationale: "Sharing apps with the entire organization by default can lead to unintended access to apps and their underlying data. Disabling this ensures apps are shared intentionally with specific users or groups.",
+    lastModified: "June 2023",
+    checkType: "Automated",
+    configurable: false,
+    bod2501: false,
+    notes: [],
+    nistMapping: ["AC-3"],
+    mitreMapping: ["T1078: Valid Accounts"],
+    resources: ["https://learn.microsoft.com/en-us/power-platform/admin/settings-privacy-security"],
+    implementation: `1. Sign in to the Power Platform admin center.
+2. Select Environments and choose the default environment.
+3. Select Settings > Product > Privacy + Security.
+4. Set Share with Everyone to Off.
+5. Save.`,
+    licenseRequirements: "N/A",
+  },
 ];
 
 // ══════════════════════════════════════════════════════════════
@@ -1875,7 +2647,7 @@ export const POWERPLATFORM_BASELINE_CONTROLS: BaselineControl[] = [
 export const SHAREPOINT_SECTIONS: Record<number, string> = {
   1: "External Sharing",
   2: "Access Control",
-  3: "Sharing Settings",
+  3: "Securing Anyone Links and Verification Code Users",
   4: "Site Creation",
 };
 
@@ -2025,6 +2797,30 @@ export const SHAREPOINT_BASELINE_CONTROLS: BaselineControl[] = [
     licenseRequirements: "N/A",
   },
   {
+    id: "MS.SHAREPOINT.3.3v1",
+    section: "Securing Anyone Links and Verification Code Users",
+    sectionNumber: 3,
+    title: "Reauthentication for verification code users SHALL be required after 30 days or less",
+    description: "External users who use verification codes to access shared content must re-authenticate within 30 days.",
+    criticality: "SHALL",
+    rationale: "Verification code users are external users who access shared content without a Microsoft account. Requiring reauthentication limits the window of access, reducing risk if a code is compromised.",
+    lastModified: "June 2023",
+    checkType: "Automated",
+    configurable: false,
+    bod2501: true,
+    notes: [],
+    nistMapping: ["AC-12"],
+    mitreMapping: ["T1550: Use Alternate Authentication Material"],
+    resources: ["https://learn.microsoft.com/en-us/sharepoint/turn-external-sharing-on-or-off"],
+    implementation: `1. Sign in to the SharePoint admin center.
+2. Under Policies, select Sharing.
+3. Expand More external sharing settings.
+4. Check People who use a verification code must reauthenticate after this many days.
+5. Set the value to 30 or less.
+6. Click Save.`,
+    licenseRequirements: "N/A",
+  },
+  {
     id: "MS.SHAREPOINT.4.1v1",
     section: "Site Creation",
     sectionNumber: 4,
@@ -2053,12 +2849,13 @@ export const SHAREPOINT_BASELINE_CONTROLS: BaselineControl[] = [
 // ══════════════════════════════════════════════════════════════
 
 export const TEAMS_SECTIONS: Record<number, string> = {
-  1: "External Access",
-  2: "Guest Access",
-  3: "Meeting Policies",
-  4: "Messaging Policies",
-  5: "App Policies",
+  1: "Meeting Policies",
+  2: "External User Access",
+  4: "Teams Email Integration",
+  5: "App Management",
   6: "Data Loss Prevention",
+  7: "Malware Scanning",
+  8: "Link Protection",
 };
 
 export const TEAMS_BASELINE_CONTROLS: BaselineControl[] = [
@@ -2126,6 +2923,97 @@ export const TEAMS_BASELINE_CONTROLS: BaselineControl[] = [
     licenseRequirements: "N/A",
   },
   {
+    id: "MS.TEAMS.1.4v1",
+    section: "Meeting Policies",
+    sectionNumber: 1,
+    title: "Anonymous users SHOULD NOT be enabled to start meetings",
+    description: "Anonymous users should not be allowed to start meetings in Teams.",
+    criticality: "SHOULD",
+    rationale: "In some cases, allowing anonymous users to start meetings is a feature used to host large public events. However, for most agencies, this represents a security risk as anonymous users would be able to start meetings without an authenticated user present.",
+    lastModified: "December 2023",
+    checkType: "Automated",
+    configurable: false,
+    bod2501: false,
+    notes: [],
+    nistMapping: ["AC-3"],
+    mitreMapping: ["T1562: Impair Defenses"],
+    resources: ["https://learn.microsoft.com/en-us/microsoftteams/meeting-settings-in-teams"],
+    implementation: `1. Sign in to the Microsoft Teams admin center.
+2. Select Meetings > Meeting settings.
+3. Under the Participants section, set Anonymous users can join a meeting to On.
+4. Set Anonymous users and dial-in callers can start a meeting to Off.
+5. Click Save.`,
+    licenseRequirements: "N/A",
+  },
+  {
+    id: "MS.TEAMS.1.5v1",
+    section: "Meeting Policies",
+    sectionNumber: 1,
+    title: "Anonymous users SHALL NOT be enabled to join meetings",
+    description: "Anonymous users should not be permitted to join Teams meetings at all.",
+    criticality: "SHALL",
+    rationale: "Anonymous access can be exploited for unauthorized meeting access. Restricting anonymous access provides additional security by requiring authentication before joining meetings.",
+    lastModified: "December 2023",
+    checkType: "Automated",
+    configurable: true,
+    bod2501: true,
+    notes: [],
+    nistMapping: ["AC-3"],
+    mitreMapping: ["T1562: Impair Defenses"],
+    resources: ["https://learn.microsoft.com/en-us/microsoftteams/meeting-settings-in-teams"],
+    implementation: `1. Sign in to the Microsoft Teams admin center.
+2. Select Meetings > Meeting settings.
+3. Under the Participants section, set Anonymous users can join a meeting to Off.
+4. Click Save.`,
+    licenseRequirements: "N/A",
+  },
+  {
+    id: "MS.TEAMS.1.6v1",
+    section: "Meeting Policies",
+    sectionNumber: 1,
+    title: "Per-meeting meeting organizer controls over anonymous access SHOULD be enabled",
+    description: "Meeting organizers should be able to override global anonymous access settings on a per-meeting basis.",
+    criticality: "SHOULD",
+    rationale: "Some meetings may require anonymous access for legitimate business purposes. Enabling per-meeting controls allows organizers to selectively allow anonymous access while maintaining a secure default.",
+    lastModified: "December 2023",
+    checkType: "Automated",
+    configurable: false,
+    bod2501: false,
+    notes: [],
+    nistMapping: ["AC-3"],
+    mitreMapping: ["T1562: Impair Defenses"],
+    resources: ["https://learn.microsoft.com/en-us/microsoftteams/meeting-settings-in-teams"],
+    implementation: `1. Sign in to the Microsoft Teams admin center.
+2. Select Meetings > Meeting settings.
+3. Under the Participants section, ensure Anonymous users can join a meeting is On.
+4. Set Meeting organizers can override to allow anonymous users to join meetings to On.
+5. Click Save.`,
+    licenseRequirements: "N/A",
+  },
+  {
+    id: "MS.TEAMS.1.7v2",
+    section: "Meeting Policies",
+    sectionNumber: 1,
+    title: "Only users who are in the organizer's organization SHOULD be able to bypass the meeting lobby",
+    description: "External and anonymous users should wait in the lobby and be manually admitted by meeting organizers.",
+    criticality: "SHOULD",
+    rationale: "Allowing external or anonymous users to bypass the lobby reduces the organizer's ability to control who enters meetings. This setting gives the organizer the ability to vet attendees before admitting them.",
+    lastModified: "December 2023",
+    checkType: "Automated",
+    configurable: false,
+    bod2501: false,
+    notes: [],
+    nistMapping: ["AC-3"],
+    mitreMapping: ["T1562: Impair Defenses"],
+    resources: ["https://learn.microsoft.com/en-us/microsoftteams/who-can-bypass-meeting-lobby"],
+    implementation: `1. Sign in to the Microsoft Teams admin center.
+2. Select Meetings > Meeting policies.
+3. Select the Global (Org-wide default) policy.
+4. Under Meeting join & lobby, set Who can bypass the lobby to People in my org.
+5. Click Save.`,
+    licenseRequirements: "N/A",
+  },
+  {
     id: "MS.TEAMS.2.1v1",
     section: "Guest Access",
     sectionNumber: 2,
@@ -2144,6 +3032,50 @@ export const TEAMS_BASELINE_CONTROLS: BaselineControl[] = [
     implementation: `1. In the Teams admin center, navigate to Users > Guest access.
 2. Review the guest access settings.
 3. Use Entra ID conditional access policies to control guest access on a per-user or group basis.`,
+    licenseRequirements: "N/A",
+  },
+  {
+    id: "MS.TEAMS.2.2v2",
+    section: "External User Access",
+    sectionNumber: 2,
+    title: "Unmanaged users SHALL NOT be enabled to initiate contact with internal users",
+    description: "Teams users not managed by an organization should not be able to initiate contact with internal users.",
+    criticality: "SHALL",
+    rationale: "Allowing unmanaged users to initiate contact with internal users provides a potential vector for phishing and social engineering attacks.",
+    lastModified: "December 2023",
+    checkType: "Automated",
+    configurable: false,
+    bod2501: true,
+    notes: [],
+    nistMapping: ["AC-3"],
+    mitreMapping: ["T1566: Phishing"],
+    resources: ["https://learn.microsoft.com/en-us/microsoftteams/manage-external-access"],
+    implementation: `1. Sign in to the Microsoft Teams admin center.
+2. Select Users > External access.
+3. Under Teams accounts not managed by an organization, uncheck People in my org can communicate with Teams users whose accounts aren't managed by an organization.
+4. Click Save.`,
+    licenseRequirements: "N/A",
+  },
+  {
+    id: "MS.TEAMS.2.3v2",
+    section: "External User Access",
+    sectionNumber: 2,
+    title: "Internal users SHOULD NOT be enabled to initiate contact with Skype users",
+    description: "Internal Teams users should not be able to communicate with Skype consumer users.",
+    criticality: "SHOULD",
+    rationale: "Skype presents a largely uncontrolled channel for communication that could be exploited for phishing, data exfiltration, or social engineering.",
+    lastModified: "December 2023",
+    checkType: "Automated",
+    configurable: false,
+    bod2501: false,
+    notes: [],
+    nistMapping: ["AC-3"],
+    mitreMapping: ["T1566: Phishing"],
+    resources: ["https://learn.microsoft.com/en-us/microsoftteams/manage-external-access"],
+    implementation: `1. Sign in to the Microsoft Teams admin center.
+2. Select Users > External access.
+3. Under Skype users, uncheck Allow users in my organization to communicate with Skype users.
+4. Click Save.`,
     licenseRequirements: "N/A",
   },
   {
@@ -2254,6 +3186,30 @@ export const TEAMS_BASELINE_CONTROLS: BaselineControl[] = [
     licenseRequirements: "N/A",
   },
   {
+    id: "MS.TEAMS.5.3v2",
+    section: "App Management",
+    sectionNumber: 5,
+    title: "Default org-wide app settings SHALL be configured to not allow third-party or custom apps",
+    description: "Third-party and custom apps should not be installed by default in Teams.",
+    criticality: "SHALL",
+    rationale: "Third-party and custom apps may not have the same security assurances as first-party Microsoft applications. Disabling by default and selectively enabling ensures only vetted apps are available.",
+    lastModified: "December 2023",
+    checkType: "Automated",
+    configurable: false,
+    bod2501: true,
+    notes: [],
+    nistMapping: ["CM-7(5)(b)"],
+    mitreMapping: ["T1195: Supply Chain Compromise", "T1195.002: Compromise Software Supply Chain"],
+    resources: ["https://learn.microsoft.com/en-us/microsoftteams/manage-apps"],
+    implementation: `1. Sign in to the Microsoft Teams admin center.
+2. Select Teams apps > Manage apps.
+3. Select Org-wide app settings.
+4. Under Third-party apps, uncheck Allow third-party apps.
+5. Under Custom apps, uncheck Allow interaction with custom apps.
+6. Click Save.`,
+    licenseRequirements: "N/A",
+  },
+  {
     id: "MS.TEAMS.6.1v1",
     section: "Data Loss Prevention",
     sectionNumber: 6,
@@ -2275,6 +3231,124 @@ export const TEAMS_BASELINE_CONTROLS: BaselineControl[] = [
 4. Under Locations, enable Teams chat and channel messages.
 5. Configure rules to detect and protect sensitive information types.`,
     licenseRequirements: "Microsoft 365 E5 or equivalent",
+  },
+  {
+    id: "MS.TEAMS.6.2v1",
+    section: "Data Loss Prevention",
+    sectionNumber: 6,
+    title: "The DLP solution SHALL protect PII and sensitive information, as defined by the agency",
+    description: "A DLP solution should be configured to detect and protect personally identifiable information and other sensitive data in Teams.",
+    criticality: "SHALL",
+    rationale: "Sensitive information may be inadvertently shared through Teams. DLP policies help detect and prevent the sharing of sensitive information.",
+    lastModified: "December 2023",
+    checkType: "Manual",
+    configurable: false,
+    bod2501: false,
+    notes: [],
+    nistMapping: ["SC-28"],
+    mitreMapping: ["T1567: Exfiltration Over Web Service"],
+    resources: ["https://learn.microsoft.com/en-us/purview/dlp-microsoft-teams"],
+    implementation: `1. Identify PII and sensitive information types as defined by the agency.
+2. Sign in to the Microsoft Purview portal.
+3. Under Solutions, select Data loss prevention.
+4. Select Policies and create or edit a policy that covers Microsoft Teams.
+5. Configure rules to detect and protect the identified information types.
+6. Apply the policy.`,
+    licenseRequirements: "E5 or G5 licensing, or E3/G3 with add-on compliance licenses",
+  },
+  {
+    id: "MS.TEAMS.7.1v1",
+    section: "Malware Scanning",
+    sectionNumber: 7,
+    title: "Attachments included with Teams messages SHOULD be scanned for malware",
+    description: "Malware scanning should be enabled for files shared through Teams channels and chats.",
+    criticality: "SHOULD",
+    rationale: "Malware may be shared through Teams messages. Scanning attachments helps detect and prevent malware from spreading within the organization.",
+    lastModified: "December 2023",
+    checkType: "Manual",
+    configurable: false,
+    bod2501: false,
+    notes: [],
+    nistMapping: ["SI-3a", "SI-8"],
+    mitreMapping: ["T1566.001: Spearphishing Attachment"],
+    resources: ["https://learn.microsoft.com/en-us/microsoft-365/security/office-365-security/safe-attachments-for-spo-odfb-teams-about"],
+    implementation: `1. Sign in to the Microsoft Defender portal.
+2. Select Email & collaboration > Policies & rules > Threat policies.
+3. Select Safe Attachments.
+4. Select Global settings.
+5. Set Turn on Defender for Office 365 for SharePoint, OneDrive, and Microsoft Teams to On.
+6. Click Save.`,
+    licenseRequirements: "Defender for Office 365 Plan 1 or Plan 2",
+  },
+  {
+    id: "MS.TEAMS.7.2v1",
+    section: "Malware Scanning",
+    sectionNumber: 7,
+    title: "Users SHOULD be prevented from opening or downloading files detected as malware",
+    description: "Users should not be able to open or download files that have been detected as malware in Teams.",
+    criticality: "SHOULD",
+    rationale: "Even with scanning enabled, if users are able to open flagged files, the protection is not effective. Blocking access to flagged files ensures the malware is not spread.",
+    lastModified: "December 2023",
+    checkType: "Manual",
+    configurable: false,
+    bod2501: false,
+    notes: [],
+    nistMapping: ["SI-3a", "SI-8"],
+    mitreMapping: ["T1204: User Execution", "T1204.002: Malicious File"],
+    resources: ["https://learn.microsoft.com/en-us/microsoft-365/security/office-365-security/safe-attachments-for-spo-odfb-teams-configure"],
+    implementation: `This item is partially implemented by MS.TEAMS.7.1. Additionally, use the SharePoint Online Management Shell:
+1. Connect-SPOService.
+2. Set-SPOTenant -DisallowInfectedFileDownload $true.
+This prevents users from opening or downloading files detected as malicious.`,
+    licenseRequirements: "Defender for Office 365 Plan 1 or Plan 2",
+  },
+  {
+    id: "MS.TEAMS.8.1v1",
+    section: "Link Protection",
+    sectionNumber: 8,
+    title: "URL comparison with a block list SHOULD be enabled",
+    description: "Safe Links should be configured in Teams to compare clicked URLs against a list of known malicious links.",
+    criticality: "SHOULD",
+    rationale: "URLs sent in Teams messages may be malicious. Comparing URLs against a block list detects known malicious links before users can navigate to them.",
+    lastModified: "December 2023",
+    checkType: "Manual",
+    configurable: false,
+    bod2501: false,
+    notes: [],
+    nistMapping: ["SC-7"],
+    mitreMapping: ["T1566.002: Spearphishing Link"],
+    resources: ["https://learn.microsoft.com/en-us/microsoft-365/security/office-365-security/safe-links-about"],
+    implementation: `1. Sign in to Microsoft Defender.
+2. Select Email & collaboration > Policies & rules > Threat policies.
+3. Select Safe Links.
+4. Edit or create a Safe Links policy.
+5. Under URL & click tracking settings, set On: Safe Links checks a list of known, malicious links when users click links in Microsoft Teams to On.
+6. Click Save.`,
+    licenseRequirements: "Defender for Office 365 Plan 1 or Plan 2",
+  },
+  {
+    id: "MS.TEAMS.8.2v1",
+    section: "Link Protection",
+    sectionNumber: 8,
+    title: "User click tracking SHOULD be enabled",
+    description: "Safe Links should be configured to track user clicks on URLs in Teams messages for security monitoring.",
+    criticality: "SHOULD",
+    rationale: "Tracking user clicks on links provides visibility into potentially malicious link activity and helps identify compromised accounts or targeted phishing campaigns.",
+    lastModified: "December 2023",
+    checkType: "Manual",
+    configurable: false,
+    bod2501: false,
+    notes: [],
+    nistMapping: ["SI-4"],
+    mitreMapping: ["T1566.002: Spearphishing Link", "T1204.001: Malicious Link"],
+    resources: ["https://learn.microsoft.com/en-us/microsoft-365/security/office-365-security/safe-links-about"],
+    implementation: `1. Sign in to Microsoft Defender.
+2. Select Email & collaboration > Policies & rules > Threat policies.
+3. Select Safe Links.
+4. Edit the Safe Links policy.
+5. Under URL & click tracking settings, ensure Track user clicks is On and Let users click through to the original URL is Off.
+6. Click Save.`,
+    licenseRequirements: "Defender for Office 365 Plan 1 or Plan 2",
   },
 ];
 
