@@ -278,16 +278,32 @@
       "post": {
         "operationId": "Chat",
         "summary": "AI compliance chat",
-        "description": "Send a message to the AI compliance assistant. Provide assessment context for grounded answers about specific control failures and remediation.",
+        "description": "Send a message to the AI compliance assistant. Provide assessment context and controlDetails for grounded answers with AI root-cause analysis of specific control failures.",
         "parameters": [
           {
             "name": "body",
             "in": "body",
             "required": true,
-            "description": "Chat request with message and optional assessmentContext",
+            "description": "Chat request with message, optional assessmentContext, and optional controlDetails array for per-control AI analysis",
             "schema": {
               "type": "object",
-              "description": "Chat request body"
+              "required": ["message"],
+              "properties": {
+                "message": { "type": "string", "description": "The user's chat message" },
+                "assessmentContext": { "type": "string", "description": "Pre-built assessment context string from parse-results" },
+                "controlDetails": {
+                  "type": "array",
+                  "description": "Full control data from the parsed ScubaGear results, used for AI per-control analysis",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "controlId": { "type": "string" },
+                      "status": { "type": "string" },
+                      "reportDetails": { "type": "string" }
+                    }
+                  }
+                }
+              }
             }
           }
         ],
@@ -302,38 +318,6 @@
               }
             }
           }
-        }
-      }
-    },
-    "/analyze-control": {
-      "post": {
-        "operationId": "AnalyzeControl",
-        "summary": "AI root-cause analysis of a control result",
-        "description": "Uses AI to analyse the specific ScubaGear scan output for a control, explaining WHY it passed or failed and providing targeted remediation based on the actual findings (users, groups, policies, settings).",
-        "parameters": [
-          {
-            "name": "body",
-            "in": "body",
-            "required": true,
-            "description": "Control ID, scan report details, and status",
-            "schema": {
-              "type": "object",
-              "required": ["controlId", "reportDetails"],
-              "properties": {
-                "controlId": { "type": "string", "description": "The control ID (e.g. MS.AAD.3.1v1)" },
-                "reportDetails": { "type": "string", "description": "The raw report details from the ScubaGear scan result" },
-                "status": { "type": "string", "description": "The control status (Pass, Fail, etc.)" }
-              }
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "AI analysis of the control result",
-            "schema": { "$ref": "#/definitions/ControlAnalysis" }
-          },
-          "400": { "description": "Invalid input" },
-          "500": { "description": "Analysis error" }
         }
       }
     },
@@ -495,16 +479,6 @@
         "url": { "type": "string" },
         "content": { "type": "string" },
         "lastUpdated": { "type": "string" }
-      }
-    },
-    "ControlAnalysis": {
-      "type": "object",
-      "properties": {
-        "controlId": { "type": "string", "description": "The control ID that was analysed" },
-        "status": { "type": "string", "description": "The control status" },
-        "analysis": { "type": "string", "description": "AI-generated root-cause analysis in Markdown" },
-        "hasBaseline": { "type": "boolean", "description": "Whether a baseline definition was found" },
-        "timestamp": { "type": "string", "description": "ISO 8601 timestamp" }
       }
     },
     "BlobListResponse": {

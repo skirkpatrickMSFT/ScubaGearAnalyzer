@@ -45,9 +45,12 @@ Users may refer to controls in shorthand:
 - "powerplatform 1.1" → MS.POWERPLATFORM.1.1v1
 Always normalise to the full MS.PRODUCT.X.Xv1 format before passing to any tool.
 
+### Scan result analysis
+When the user asks about a specific control (especially failures), use the **analyze_scan_result** tool to get the full scan details and produce a root-cause analysis. This tool combines the raw ScubaGear scan output with the official CISA baseline requirement. Always use this tool when the user asks "why did X fail?", "what's wrong with X?", "explain X", or similar. Extract specific findings: user names, group names, policy names, and settings that caused the result.
+
 ### Response guidelines
 - Always ground your answers in either ScubaGear Baseline data or Microsoft Learn documentation.
-- When discussing a failing control, first explain what the control requires, then explain why it failed, then provide remediation steps.
+- When discussing a failing control, first explain what the control requires, then explain why it failed based on the actual scan findings, then provide targeted remediation steps referencing the specific users/groups/policies found.
 - Format responses in Markdown. Use headings, bullet lists, and tables.
 - Be concise but thorough.
 - When showing remediation steps, include specific navigation paths in the Microsoft admin portals.`;
@@ -194,7 +197,24 @@ const TOOLS: ChatCompletionTool[] = [
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'analyze_scan_result',
+      description: 'Analyse the actual ScubaGear scan result for a specific control. Combines the raw report details from the scan with the CISA baseline requirement to explain WHY the control passed/failed and extracts specific findings (users, groups, policies, settings). Use this when the user asks about a specific control result.',
+      parameters: {
+        type: 'object',
+        properties: {
+          controlId: { type: 'string', description: 'The control ID, e.g. MS.AAD.3.1v1' },
+        },
+        required: ['controlId'],
+      },
+    },
+  },
 ];
+
+// ── Shared state for current request's control details ──────
+let _currentControlDetails: Record<string, { status: string; reportDetails: string }> = {};
 
 // ── Tool dispatcher (calls local functions instead of MCP) ──
 async function dispatchToolCall(name: string, args: Record<string, unknown>): Promise<string> {
@@ -274,6 +294,43 @@ async function dispatchToolCall(name: string, args: Record<string, unknown>): Pr
         if (results.length === 0) return `No Entra ID docs found for: "${args.topic}"`;
         return results.map((r, i) => `${i + 1}. **${r.title}**\n${r.description}\nURL: ${r.url}`).join('\n\n');
       }
+      case 'analyze_scan_result': {
+        const controlId = args.controlId as string;
+        const baseline = getControlById(controlId);
+        const scanData = _currentControlDetails[controlId];
+
+        let output = '';
+
+        // Baseline requirement context
+        if (baseline) {
+          output += `## CISA Baseline Requirement: ${baseline.id}\n`;
+          output += `**Section:** ${baseline.sectionNumber}. ${baseline.section}\n`;
+          output += `**Title:** ${baseline.title}\n`;
+          output += `**Criticality:** ${baseline.criticality}\n`;
+          output += `**Check Type:** ${baseline.checkType}\n`;
+          output += `**Description:** ${baseline.description}\n`;
+          output += `**Rationale:** ${baseline.rationale}\n`;
+          output += `**Implementation guidance:**\n${baseline.implementation}\n`;
+          if (baseline.notes.length > 0) output += `**Notes:** ${baseline.notes.join('; ')}\n`;
+          output += `**NIST:** ${baseline.nistMapping.join(', ')}\n`;
+          output += `**MITRE:** ${baseline.mitreMapping.join(', ')}\n`;
+        } else {
+          output += `Control ${controlId} — no baseline definition found.\n`;
+        }
+
+        output += '\n---\n\n';
+
+        // Scan result context
+        if (scanData) {
+          output += `## Scan Result\n`;
+          output += `**Status:** ${scanData.status}\n`;
+          output += `**Report Details:**\n${scanData.reportDetails}\n`;
+        } else {
+          output += `No scan data available for ${controlId}. The user may not have uploaded results, or this control was not in the scan.\n`;
+        }
+
+        return output;
+      }
       default:
         return `Unknown tool: ${name}`;
     }
@@ -299,9 +356,23 @@ app.http('chat', {
         message?: string;
         assessmentContext?: string;
         history?: Array<{ role: string; content: string }>;
+        controlDetails?: Array<{ controlId: string; status: string; reportDetails: string }>;
       };
 
-      const { message, assessmentContext, history } = body;
+      const { message, assessmentContext, history, controlDetails } = body;
+
+      // Populate control details map for the analyze_scan_result tool
+      _currentControlDetails = {};
+      if (Array.isArray(controlDetails)) {
+        for (const cd of controlDetails) {
+          if (cd.controlId && cd.reportDetails) {
+            _currentControlDetails[cd.controlId] = {
+              status: cd.status || 'Unknown',
+              reportDetails: cd.reportDetails.slice(0, 6000),
+            };
+          }
+        }
+      }
 
       if (!message || typeof message !== 'string') {
         return { status: 400, jsonBody: { error: 'message field is required' } };

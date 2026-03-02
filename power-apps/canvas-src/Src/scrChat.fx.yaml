@@ -91,7 +91,15 @@ scrChat As screen:
                 varChatResponse,
                 APIScubaGearAnalyzer.Chat({
                     message: txtMessage.Text,
-                    assessmentContext: varChatContext
+                    assessmentContext: varChatContext,
+                    controlDetails: ForAll(
+                        colControls,
+                        {
+                            controlId: controlId,
+                            status: status,
+                            reportDetails: reportDetails
+                        }
+                    )
                 })
             );
             Collect(colChatHistory, {role: "assistant", content: varChatResponse.response});
