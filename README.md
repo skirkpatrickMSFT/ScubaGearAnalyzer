@@ -14,7 +14,6 @@ Supports **ScubaGear 1.5–1.7** output formats, including omitted controls, exe
 | `copilot-studio/` | Copilot Studio agent definition *(optional — alternative chat interface)* |
 | `deploy-functions.ps1` | One-click Azure Functions deployment script |
 | `DEPLOYMENT-GUIDE.md` | End-to-end deployment walkthrough |
-| `test-subset.json` | Sample ScubaGear results for testing |
 
 ## Architecture
 
