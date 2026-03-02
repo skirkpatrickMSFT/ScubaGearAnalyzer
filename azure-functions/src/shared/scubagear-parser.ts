@@ -63,15 +63,28 @@ function normaliseCriticality(raw: string): string {
   return base;
 }
 
+/** Current ScubaGear release tag used for baseline reference URLs */
+const SCUBAGEAR_CURRENT_VERSION = '1.17.1';
+
+/** Rewrite outdated ScubaGear GitHub baseline URLs to the current release */
+function rewriteScubaGearUrls(text: string): string {
+  return text.replace(
+    /https:\/\/github\.com\/cisagov\/ScubaGear\/blob\/[^/]+\/baselines\//gi,
+    `https://github.com/cisagov/ScubaGear/blob/v${SCUBAGEAR_CURRENT_VERSION}/PowerShell/ScubaGear/baselines/`,
+  );
+}
+
 export function stripHtml(html: string): string {
   if (!html) return '';
-  return html
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<a[^>]*href="([^"]*)"[^>]*>([^<]*)<\/a>/gi, '$2 ($1)')
-    .replace(/<[^>]+>/g, '')
-    .replace(/\\u003c/gi, '<')
-    .replace(/\\u003e/gi, '>')
-    .replace(/\\u0027/gi, "'");
+  return rewriteScubaGearUrls(
+    html
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<a[^>]*href="([^"]*)"[^>]*>([^<]*)<\/a>/gi, '$2 ($1)')
+      .replace(/<[^>]+>/g, '')
+      .replace(/\\u003c/gi, '<')
+      .replace(/\\u003e/gi, '>')
+      .replace(/\\u0027/gi, "'"),
+  );
 }
 
 export function parseTestResults(raw: ScubaGearTestResult[]): ParsedControl[] {
