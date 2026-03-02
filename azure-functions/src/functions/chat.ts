@@ -14,6 +14,7 @@ import { app, HttpRequest, HttpResponseInit, InvocationContext } from '@azure/fu
 import OpenAI from 'openai';
 import { getControlById, searchControls, getControlsBySection, AAD_SECTIONS, HIGHLY_PRIVILEGED_ROLES } from '../shared/baseline-data.js';
 import { searchLearn, fetchArticle, getLearnUrlsForControl, getSearchQueryForTopic } from '../shared/learn-fetcher.js';
+import { SCUBAGEAR_CURRENT_VERSION, extractProduct } from '../shared/scubagear-parser.js';
 import type { ChatCompletionMessageParam, ChatCompletionTool } from 'openai/resources/index';
 
 // ── OpenAI client ───────────────────────────────────────────
@@ -23,6 +24,80 @@ function getOpenAI(): OpenAI {
     _openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
   }
   return _openai;
+}
+
+// ── Rego policy fetching ────────────────────────────────────
+const REGO_FILE_MAP: Record<string, string> = {
+  AAD: 'AADConfig', DEFENDER: 'DefenderConfig', EXO: 'EXOConfig',
+  SHAREPOINT: 'SharePointConfig', TEAMS: 'TeamsConfig',
+  POWERPLATFORM: 'PowerPlatformConfig',
+};
+const REGO_CACHE = new Map<string, { content: string; fetchedAt: number }>();
+const REGO_CACHE_TTL = 3_600_000; // 1 hour
+
+async function fetchRegoFile(product: string): Promise<string | null> {
+  const key = product.toUpperCase();
+  const fileName = REGO_FILE_MAP[key];
+  if (!fileName) return null;
+
+  const cached = REGO_CACHE.get(key);
+  if (cached && Date.now() - cached.fetchedAt < REGO_CACHE_TTL) return cached.content;
+
+  const url = `https://raw.githubusercontent.com/cisagov/ScubaGear/v${SCUBAGEAR_CURRENT_VERSION}/PowerShell/ScubaGear/Rego/${fileName}.rego`;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const content = await res.text();
+    REGO_CACHE.set(key, { content, fetchedAt: Date.now() });
+    return content;
+  } catch { return null; }
+}
+
+/**
+ * Extract the Rego rule for a specific control plus its helper
+ * definitions and the file header (package / imports).
+ */
+function extractRegoRule(regoContent: string, controlId: string): string {
+  const lines = regoContent.split('\n');
+
+  // Header: package + imports
+  const headerLines: string[] = [];
+  for (const line of lines) {
+    if (line.startsWith('package ') || line.startsWith('import ') || line.trim() === '') {
+      headerLines.push(line);
+    } else break;
+  }
+
+  // Locate the PolicyId
+  const policyIdx = lines.findIndex(l => l.includes(`"${controlId}"`));
+  if (policyIdx === -1) return `No Rego rule found for ${controlId} in the policy file.`;
+
+  // Walk backwards to find rule start ("tests contains" or "tests [")
+  let ruleStart = policyIdx;
+  for (let i = policyIdx - 1; i >= 0; i--) {
+    if (lines[i].trim().match(/^tests\s/)) { ruleStart = i; break; }
+  }
+
+  // Brace-match to find the end of the rule
+  let depth = 0, started = false, ruleEnd = policyIdx;
+  for (let i = ruleStart; i < lines.length; i++) {
+    for (const ch of lines[i]) {
+      if (ch === '{') { depth++; started = true; }
+      if (ch === '}') depth--;
+    }
+    if (started && depth <= 0) { ruleEnd = i; break; }
+  }
+
+  // Grab ~40 lines before the rule start to capture related helpers
+  const contextStart = Math.max(ruleStart - 40, headerLines.length);
+  const preContext = lines.slice(contextStart, ruleStart)
+    .join('\n').trim();
+
+  let result = headerLines.join('\n') + '\n';
+  if (preContext) result += '\n# --- Related definitions ---\n' + preContext + '\n';
+  result += `\n# --- Rule for ${controlId} ---\n` +
+    lines.slice(ruleStart, ruleEnd + 1).join('\n');
+  return result;
 }
 
 // ── System prompt ───────────────────────────────────────────
@@ -47,6 +122,9 @@ Always normalise to the full MS.PRODUCT.X.Xv1 format before passing to any tool.
 
 ### Scan result analysis
 When the user asks about a specific control (especially failures), use the **analyze_scan_result** tool to get the full scan details and produce a root-cause analysis. This tool combines the raw ScubaGear scan output with the official CISA baseline requirement. Always use this tool when the user asks "why did X fail?", "what's wrong with X?", "explain X", or similar. Extract specific findings: user names, group names, policy names, and settings that caused the result.
+
+### Rego policy comparison
+For deeper root-cause analysis of failures, use the **fetch_rego_policy** tool to retrieve the actual OPA Rego rule that ScubaGear used to evaluate the control. Compare the Rego logic against the **ActualValue** data from the scan to pinpoint exactly which condition failed. Walk through the Rego rule step-by-step, showing which conditions passed and which didn't match the actual configuration. This is the most precise way to explain WHY a control failed.
 
 ### Response guidelines
 - Always ground your answers in either ScubaGear Baseline data or Microsoft Learn documentation.
@@ -211,10 +289,24 @@ const TOOLS: ChatCompletionTool[] = [
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'fetch_rego_policy',
+      description: 'Fetch the OPA Rego policy rule that ScubaGear uses to evaluate a specific control. Returns the Rego rule logic so you can compare it against the ActualValue JSON to determine the exact reason for failure. Use AFTER analyze_scan_result for deep root-cause analysis.',
+      parameters: {
+        type: 'object',
+        properties: {
+          controlId: { type: 'string', description: 'The control ID, e.g. MS.AAD.3.1v1' },
+        },
+        required: ['controlId'],
+      },
+    },
+  },
 ];
 
 // ── Shared state for current request's control details ──────
-let _currentControlDetails: Record<string, { status: string; reportDetails: string }> = {};
+let _currentControlDetails: Record<string, { status: string; reportDetails: string; actualValue?: string }> = {};
 
 // ── Tool dispatcher (calls local functions instead of MCP) ──
 async function dispatchToolCall(name: string, args: Record<string, unknown>): Promise<string> {
@@ -325,11 +417,31 @@ async function dispatchToolCall(name: string, args: Record<string, unknown>): Pr
           output += `## Scan Result\n`;
           output += `**Status:** ${scanData.status}\n`;
           output += `**Report Details:**\n${scanData.reportDetails}\n`;
+
+          if (scanData.actualValue) {
+            output += `\n## Actual Configuration Value (JSON evaluated by Rego)\n`;
+            output += '```json\n' + scanData.actualValue + '\n```\n';
+          } else {
+            output += `\n_No ActualValue data available. Use fetch_rego_policy for Rego rule analysis based on report details._\n`;
+          }
         } else {
           output += `No scan data available for ${controlId}. The user may not have uploaded results, or this control was not in the scan.\n`;
         }
 
         return output;
+      }
+      case 'fetch_rego_policy': {
+        const controlId = args.controlId as string;
+        const product = extractProduct(controlId);
+        if (!product) return `Cannot determine product from control ID: ${controlId}`;
+
+        const regoContent = await fetchRegoFile(product);
+        if (!regoContent) {
+          return `Could not fetch Rego policy file for ${product}. The file may not exist at the expected URL for ScubaGear v${SCUBAGEAR_CURRENT_VERSION}.`;
+        }
+
+        const ruleExtract = extractRegoRule(regoContent, controlId);
+        return `## Rego Policy for ${controlId}\n\nSource: https://github.com/cisagov/ScubaGear/blob/v${SCUBAGEAR_CURRENT_VERSION}/PowerShell/ScubaGear/Rego/${REGO_FILE_MAP[product]}.rego\n\n\`\`\`rego\n${ruleExtract}\n\`\`\`\n\nCompare this Rego logic against the ActualValue JSON from analyze_scan_result to identify which specific condition caused the control to fail.`;
       }
       default:
         return `Unknown tool: ${name}`;
@@ -356,7 +468,7 @@ app.http('chat', {
         message?: string;
         assessmentContext?: string;
         history?: Array<{ role: string; content: string }>;
-        controlDetails?: Array<{ controlId: string; status: string; reportDetails: string }>;
+        controlDetails?: Array<{ controlId: string; status: string; reportDetails: string; actualValue?: string }>;
       };
 
       const { message, assessmentContext, history, controlDetails } = body;
@@ -369,6 +481,7 @@ app.http('chat', {
             _currentControlDetails[cd.controlId] = {
               status: cd.status || 'Unknown',
               reportDetails: cd.reportDetails.slice(0, 6000),
+              actualValue: cd.actualValue ? cd.actualValue.slice(0, 8000) : undefined,
             };
           }
         }

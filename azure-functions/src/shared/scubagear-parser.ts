@@ -64,7 +64,7 @@ function normaliseCriticality(raw: string): string {
 }
 
 /** Current ScubaGear release tag used for baseline reference URLs */
-const SCUBAGEAR_CURRENT_VERSION = '1.17.1';
+export const SCUBAGEAR_CURRENT_VERSION = '1.17.1';
 
 /** Rewrite outdated ScubaGear GitHub baseline URLs to the current release */
 function rewriteScubaGearUrls(text: string): string {
@@ -92,6 +92,15 @@ export function parseTestResults(raw: ScubaGearTestResult[]): ParsedControl[] {
     .map((r) => {
       const product = extractProduct(r.PolicyId);
       if (!product) return null;
+      // Stringify ActualValue for downstream consumption (chat AI analysis)
+      let actualValue: string | undefined;
+      if (r.ActualValue !== undefined && r.ActualValue !== null) {
+        try {
+          actualValue = typeof r.ActualValue === 'string'
+            ? r.ActualValue
+            : JSON.stringify(r.ActualValue, null, 2);
+        } catch { actualValue = String(r.ActualValue); }
+      }
       return {
         controlId: r.PolicyId, product,
         section: extractSection(r.PolicyId),
@@ -99,6 +108,7 @@ export function parseTestResults(raw: ScubaGearTestResult[]): ParsedControl[] {
         criticality: normaliseCriticality(r.Criticality),
         reportDetails: stripHtml(r.ReportDetails),
         requirementMet: r.RequirementMet,
+        actualValue,
       } as ParsedControl;
     })
     .filter(Boolean) as ParsedControl[];

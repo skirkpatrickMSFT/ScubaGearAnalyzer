@@ -299,7 +299,8 @@
                     "properties": {
                       "controlId": { "type": "string" },
                       "status": { "type": "string" },
-                      "reportDetails": { "type": "string" }
+                      "reportDetails": { "type": "string" },
+                      "actualValue": { "type": "string", "description": "Stringified JSON of the actual tenant configuration value evaluated by ScubaGear Rego policy" }
                     }
                   }
                 }
@@ -546,7 +547,8 @@
               "reportDetails": { "type": "string" },
               "requirementMet": { "type": "boolean" },
               "isOmitted": { "type": "boolean" },
-              "isIncorrectResult": { "type": "boolean" }
+              "isIncorrectResult": { "type": "boolean" },
+              "actualValue": { "type": "string", "description": "Stringified JSON of the actual tenant config evaluated by Rego (TestResults format only)" }
             }
           }
         },

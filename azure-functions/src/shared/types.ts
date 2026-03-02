@@ -49,6 +49,8 @@ export interface ParsedControl {
   originalResult?: string;
   comments?: string[];
   resolutionDate?: string | null;
+  /** Stringified JSON of the actual tenant configuration value evaluated by Rego (TestResults format only) */
+  actualValue?: string;
 }
 
 /** A control entry from merged ScubaResults JSON */

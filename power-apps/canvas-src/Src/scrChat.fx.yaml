@@ -97,7 +97,8 @@ scrChat As screen:
                         {
                             controlId: controlId,
                             status: status,
-                            reportDetails: reportDetails
+                            reportDetails: reportDetails,
+                            actualValue: actualValue
                         }
                     )
                 })

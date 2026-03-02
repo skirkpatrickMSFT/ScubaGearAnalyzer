@@ -65,6 +65,7 @@ app.http('parse-results', {
         requirementMet: c.requirementMet,
         isOmitted: c.isOmitted || false,
         isIncorrectResult: c.isIncorrectResult || false,
+        actualValue: c.actualValue ? c.actualValue.slice(0, 8000) : '',
       }));
 
       return {
