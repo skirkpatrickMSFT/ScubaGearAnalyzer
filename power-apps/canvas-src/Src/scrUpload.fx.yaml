@@ -453,3 +453,25 @@ scrUpload As screen:
         Fill: =RGBA(0, 90, 158, 1)
         Color: =RGBA(255, 255, 255, 1)
         OnSelect: =Navigate(scrChat)
+
+    btnClearResults As button:
+        X: =830
+        Y: =450
+        Width: =170
+        Height: =40
+        Text: ="Clear Results"
+        Fill: =RGBA(209, 52, 56, 1)
+        Color: =RGBA(255, 255, 255, 1)
+        Size: =13
+        Visible: =varIsLoaded
+        OnSelect: |-
+            =Set(varIsLoaded, false);
+            Set(varResults, Blank());
+            Set(varChatContext, Blank());
+            Clear(colProducts);
+            Clear(colControls);
+            Clear(colChatHistory);
+            Clear(colFilteredControls);
+            Clear(colBlobs);
+            Reset(txtJsonInput);
+            Notify("Results cleared — ready for new data", NotificationType.Information)
