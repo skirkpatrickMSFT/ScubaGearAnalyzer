@@ -195,3 +195,27 @@ scrControls As screen:
         Color: =RGBA(255, 255, 255, 1)
         Visible: =varShowDetail
         OnSelect: =Set(varControlDocs, APIScubaGearAnalyzer.GetControlDocs({controlId: varSelectedControl.controlId}))
+
+    btnAnalyze As button:
+        X: =895
+        Y: =650
+        Width: =450
+        Height: =40
+        Text: ="Analyse with AI"
+        Fill: =RGBA(107, 64, 216, 1)
+        Color: =RGBA(255, 255, 255, 1)
+        Visible: =varShowDetail
+        OnSelect: |-
+            =Set(varAnalysisLoading, true);
+            Set(varAnalysis, APIScubaGearAnalyzer.AnalyzeControl({controlId: varSelectedControl.controlId, reportDetails: varSelectedControl.reportDetails, status: varSelectedControl.status}));
+            Set(varAnalysisLoading, false)
+
+    lblAnalysis As label:
+        X: =895
+        Y: =695
+        Width: =450
+        Height: =60
+        Text: =If(varAnalysisLoading, "Analysing...", !IsBlank(varAnalysis), varAnalysis.analysis, "")
+        Size: =11
+        Color: =If(varAnalysisLoading, RGBA(107, 64, 216, 1), RGBA(80, 80, 80, 1))
+        Visible: =varShowDetail
