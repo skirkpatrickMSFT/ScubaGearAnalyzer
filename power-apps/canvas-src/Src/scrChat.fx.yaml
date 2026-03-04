@@ -92,6 +92,7 @@ scrChat As screen:
                 APIScubaGearAnalyzer.Chat({
                     message: txtMessage.Text,
                     assessmentContext: varChatContext,
+                    history: JSON(colChatHistory, JSONFormat.IgnoreUnsupportedTypes),
                     controlDetails: ForAll(
                         colControls,
                         {

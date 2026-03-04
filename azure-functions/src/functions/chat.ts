@@ -122,7 +122,7 @@ Users may refer to controls in shorthand:
 Always normalise to the full MS.PRODUCT.X.Xv1 format before passing to any tool.
 
 ### Scan result analysis
-When the user asks about a specific control (especially failures), use the **analyze_scan_result** tool to get the full scan details and produce a root-cause analysis. This tool combines the raw ScubaGear scan output with the official CISA baseline requirement. Always use this tool when the user asks "why did X fail?", "what's wrong with X?", "explain X", or similar. Extract specific findings: user names, group names, policy names, and settings that caused the result.
+When the user asks about a specific control — whether about its status, why it failed, what it means, or anything else — ALWAYS use the **analyze_scan_result** tool to get the full scan details. This tool combines the raw ScubaGear scan output with the official CISA baseline requirement. Use it for ANY question targeting a specific control ID: "why did X fail?", "what's my status for X?", "what's wrong with X?", "explain X", "tell me about X", etc. Extract specific findings: user names, group names, policy names, and settings that caused the result.
 
 ### Exclusion analysis
 The user's scan data includes **exclusion configuration** from the ScubaGear config file and from Conditional Access Policies (CAPs). Use the **analyze_exclusions** tool when:
@@ -137,7 +137,7 @@ Exclusion types:
 - **OmitPolicy**: Policies completely omitted from evaluation
 - **CAP ExcludeUsers/ExcludeGroups**: Users and groups excluded within each Conditional Access Policy — these may or may not be approved
 
-When a CAP-related control fails, ALWAYS call analyze_exclusions to check if unapproved exclusions are contributing to the failure. Cross-reference the CAP exclusions against the approved CapExclusions to identify gaps.
+When analysing ANY Conditional Access Policy-related control (MS.AAD section 3 controls: 3.1 through 3.9), ALWAYS call analyze_exclusions — regardless of whether the user is asking about status, failure reasons, or general info. Exclusion configuration is critical context for ALL CAP controls. Cross-reference the CAP exclusions against the approved CapExclusions to identify gaps.
 
 ### Rego policy comparison
 For deeper root-cause analysis of failures, use the **fetch_rego_policy** tool to retrieve the actual OPA Rego rule that ScubaGear used to evaluate the control. Compare the Rego logic against the **ActualValue** data from the scan to pinpoint exactly which condition failed. Walk through the Rego rule step-by-step, showing which conditions passed and which didn't match the actual configuration. This is the most precise way to explain WHY a control failed.
@@ -462,6 +462,61 @@ async function dispatchToolCall(name: string, args: Record<string, unknown>): Pr
           output += `No scan data available for ${controlId}. The user may not have uploaded results, or this control was not in the scan.\n`;
         }
 
+        // Auto-include exclusion analysis for AAD section 3 (CAP) controls
+        if (_currentExclusionContext && /^MS\.AAD\.3\.\d+v\d+$/i.test(controlId)) {
+          output += '\n---\n\n## Exclusion Analysis (auto-included for CAP controls)\n\n';
+          const approved = _currentExclusionContext.approvedExclusions.find(
+            (e) => e.controlId === controlId
+          );
+          if (approved && approved.capExclusions) {
+            output += `### Approved Exclusions (from scuba_config)\n`;
+            if (approved.capExclusions.users.length > 0) output += `- **Users:** ${approved.capExclusions.users.join(', ')}\n`;
+            if (approved.capExclusions.groups.length > 0) output += `- **Groups:** ${approved.capExclusions.groups.join(', ')}\n`;
+            output += '\n';
+          } else {
+            output += `No approved exclusions configured for ${controlId}.\n\n`;
+          }
+
+          const capsWithExclusions = _currentExclusionContext.exclusionAnalysis.filter(
+            (a) => a.excludedUsers.length > 0 || a.excludedGroups.length > 0
+          );
+          if (capsWithExclusions.length > 0) {
+            output += `### Conditional Access Policy Exclusion Analysis\n`;
+            for (const analysis of capsWithExclusions) {
+              const unapprovedUsers = analysis.excludedUsers.filter((u) => !u.approved);
+              const unapprovedGroups = analysis.excludedGroups.filter((g) => !g.approved);
+              const approvedUsers = analysis.excludedUsers.filter((u) => u.approved);
+              const approvedGroups = analysis.excludedGroups.filter((g) => g.approved);
+
+              output += `\n**Policy:** ${analysis.policyName} (State: ${analysis.policyState})\n`;
+              if (approvedUsers.length > 0)
+                output += `- ✅ Approved excluded users: ${approvedUsers.map((u) => u.displayName).join(', ')}\n`;
+              if (unapprovedUsers.length > 0)
+                output += `- ⚠️ **Unapproved excluded users:** ${unapprovedUsers.map((u) => u.displayName || u.id).join(', ')}\n`;
+              if (approvedGroups.length > 0)
+                output += `- ✅ Approved excluded groups: ${approvedGroups.map((g) => g.id).join(', ')}\n`;
+              if (unapprovedGroups.length > 0)
+                output += `- ⚠️ **Unapproved excluded groups:** ${unapprovedGroups.map((g) => g.id).join(', ')}\n`;
+              if (unapprovedUsers.length === 0 && unapprovedGroups.length === 0)
+                output += `- ✅ All exclusions are approved\n`;
+            }
+          }
+
+          const annotated = _currentExclusionContext.annotatedPolicies.find(
+            (a) => a.controlId === controlId
+          );
+          if (annotated) {
+            output += `\n### AnnotatePolicy\nThis control has been annotated: "${annotated.comment}" (incorrectResult: ${annotated.incorrectResult})\n`;
+          }
+
+          const omitted = _currentExclusionContext.omittedPolicies.find(
+            (o) => o.controlId === controlId
+          );
+          if (omitted) {
+            output += `\n### OmitPolicy\n⏭️ This control has been **omitted** from evaluation.\nRationale: ${omitted.rationale}\nExpiration: ${omitted.expiration}\n`;
+          }
+        }
+
         return output;
       }
       case 'analyze_exclusions': {
@@ -598,17 +653,49 @@ app.http('chat', {
       }
 
       // Populate control details map for the analyze_scan_result tool
+      // Support array, JSON string, or object-with-numeric-keys from Power Apps
       _currentControlDetails = {};
-      if (Array.isArray(controlDetails)) {
-        for (const cd of controlDetails) {
-          if (cd.controlId && cd.reportDetails) {
+      let cdArray: Array<{ controlId: string; status: string; reportDetails: string; actualValue?: string }> | null = null;
+      const rawControlDetails = (body as any).controlDetails;
+      if (Array.isArray(rawControlDetails)) {
+        cdArray = rawControlDetails;
+      } else if (typeof rawControlDetails === 'string' && rawControlDetails.trim()) {
+        try { cdArray = JSON.parse(rawControlDetails); } catch { /* ignore */ }
+      } else if (rawControlDetails && typeof rawControlDetails === 'object') {
+        // Power Apps may send tables as { "0": {...}, "1": {...} }
+        cdArray = Object.values(rawControlDetails) as any;
+      }
+      if (Array.isArray(cdArray)) {
+        for (const cd of cdArray) {
+          if (cd && cd.controlId) {
             _currentControlDetails[cd.controlId] = {
               status: cd.status || 'Unknown',
-              reportDetails: cd.reportDetails.slice(0, 6000),
+              reportDetails: (cd.reportDetails || '').slice(0, 6000),
               actualValue: cd.actualValue ? cd.actualValue.slice(0, 8000) : undefined,
             };
           }
         }
+      }
+
+      // Fallback: if controlDetails was empty/missing, extract minimal data from assessmentContext
+      if (Object.keys(_currentControlDetails).length === 0 && typeof assessmentContext === 'string' && assessmentContext.length > 0) {
+        const ctrlPattern = /\*\*([A-Z]+\.[A-Z]+\.\d+\.\d+v\d+)\*\*\s*\[([^\]]+)\]\s*—\s*(\S+)/g;
+        let match: RegExpExecArray | null;
+        while ((match = ctrlPattern.exec(assessmentContext)) !== null) {
+          const [, cid, , cstatus] = match;
+          if (cid && !_currentControlDetails[cid]) {
+            // Grab report details: lines indented under this control (next line starting with spaces)
+            const afterMatch = assessmentContext.slice(match.index + match[0].length);
+            const detailMatch = afterMatch.match(/\n\s{2,3}([^\n]+)/);
+            _currentControlDetails[cid] = {
+              status: cstatus,
+              reportDetails: detailMatch ? detailMatch[1].trim() : '',
+            };
+          }
+        }
+        context.log(`controlDetails fallback: extracted ${Object.keys(_currentControlDetails).length} controls from assessmentContext`);
+      } else {
+        context.log(`controlDetails: received ${Object.keys(_currentControlDetails).length} controls from request body`);
       }
 
       if (!message || typeof message !== 'string') {
@@ -640,9 +727,18 @@ app.http('chat', {
         });
       }
 
-      // Inject history
-      if (Array.isArray(history) && history.length > 0) {
-        const trimmed = history.slice(-MAX_HISTORY_MESSAGES);
+      // Inject history — support array, JSON string, or object-with-numeric-keys from Power Apps
+      let historyArray: Array<{ role: string; content: string }> | null = null;
+      const rawHistory = (body as any).history;
+      if (Array.isArray(rawHistory)) {
+        historyArray = rawHistory;
+      } else if (typeof rawHistory === 'string' && rawHistory.trim()) {
+        try { historyArray = JSON.parse(rawHistory); } catch { /* ignore */ }
+      } else if (rawHistory && typeof rawHistory === 'object') {
+        historyArray = Object.values(rawHistory) as any;
+      }
+      if (Array.isArray(historyArray) && historyArray.length > 0) {
+        const trimmed = historyArray.slice(-MAX_HISTORY_MESSAGES);
         let charBudget = MAX_HISTORY_CHARS;
         for (const msg of trimmed) {
           if (msg && typeof msg.content === 'string' && (msg.role === 'user' || msg.role === 'assistant')) {
@@ -652,6 +748,7 @@ app.http('chat', {
             messages.push({ role: msg.role, content: text });
           }
         }
+        context.log(`Chat history: injected ${trimmed.length} messages`);
       }
 
       messages.push({ role: 'user', content: message });

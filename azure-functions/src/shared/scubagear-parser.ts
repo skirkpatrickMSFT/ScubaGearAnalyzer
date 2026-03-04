@@ -72,7 +72,7 @@ function normaliseCriticality(raw: string): string {
 }
 
 /** Current ScubaGear release tag used for baseline reference URLs */
-export const SCUBAGEAR_CURRENT_VERSION = '1.17.1';
+export const SCUBAGEAR_CURRENT_VERSION = '1.7.1';
 
 /** Rewrite outdated ScubaGear GitHub baseline URLs to the current release */
 function rewriteScubaGearUrls(text: string): string {
@@ -584,6 +584,8 @@ export function buildExclusionSummary(ctx: ExclusionContext): string {
       }
       lines.push('');
     }
+    lines.push(`📋 **Guidance:** Review unapproved exclusions and add to ScubaGear config YAML under \`Aad → CapExclusions\` to pass related controls. See: https://github.com/cisagov/ScubaGear/blob/v${SCUBAGEAR_CURRENT_VERSION}/docs/configuration/parameters.md`);
+    lines.push('');
   }
 
   return lines.join('\n');
