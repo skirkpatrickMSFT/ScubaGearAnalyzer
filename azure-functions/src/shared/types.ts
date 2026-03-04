@@ -96,6 +96,103 @@ export interface ChatMessage {
   timestamp: string;
 }
 
+/** Approved CAP exclusions from scuba_config */
+export interface CapExclusions {
+  users: string[];
+  groups: string[];
+}
+
+/** Per-control exclusion config from scuba_config */
+export interface ControlExclusionConfig {
+  controlId: string;
+  capExclusions?: CapExclusions;
+}
+
+/** Annotation (false positive) config from scuba_config */
+export interface AnnotatePolicyConfig {
+  controlId: string;
+  incorrectResult: boolean;
+  comment: string;
+}
+
+/** Omission config from scuba_config */
+export interface OmitPolicyConfig {
+  controlId: string;
+  expiration: string;
+  rationale: string;
+}
+
+/** A privileged user resolved from the Raw data */
+export interface PrivilegedUser {
+  id: string;
+  displayName: string;
+  roles: string[];
+  onPremisesImmutableId: string | null;
+}
+
+/** Classification of what a conditional access policy enforces */
+export type CAPCategory =
+  | 'phishing-resistant-mfa-all-users'
+  | 'mfa-all-users'
+  | 'phishing-resistant-mfa-privileged-roles'
+  | 'block-legacy-auth'
+  | 'block-device-code'
+  | 'require-managed-device'
+  | 'risk-based'
+  | 'other';
+
+/** A conditional access policy from the Raw data */
+export interface ConditionalAccessPolicySummary {
+  id: string;
+  displayName: string;
+  state: string;
+  excludeUsers: string[];
+  excludeGroups: string[];
+  includeUsers: string[];
+  includeGroups: string[];
+  includeRoles: string[];
+  grantControls: string[];
+  clientAppTypes: string[];
+  /** Authentication strength display name (e.g. "Phishing-resistant MFA") */
+  authStrengthName: string;
+  /** User risk levels the policy applies to */
+  userRiskLevels: string[];
+  /** Sign-in risk levels the policy applies to */
+  signInRiskLevels: string[];
+  /** Whether this policy targets device code flow */
+  hasDeviceCodeFlowCondition: boolean;
+  /** Computed category for control-to-policy mapping */
+  category: CAPCategory;
+}
+
+/** Exclusion analysis for a single CAP — shows unapproved exclusions */
+export interface CAPExclusionAnalysis {
+  policyId: string;
+  policyName: string;
+  policyState: string;
+  policyCategory: CAPCategory;
+  excludedUsers: Array<{ id: string; displayName: string; approved: boolean }>;
+  excludedGroups: Array<{ id: string; approved: boolean }>;
+  unapprovedUserCount: number;
+  unapprovedGroupCount: number;
+}
+
+/** Full exclusion context extracted from Raw JSON */
+export interface ExclusionContext {
+  /** Approved exclusions per control from scuba_config */
+  approvedExclusions: ControlExclusionConfig[];
+  /** Annotated (marked false positive) policies */
+  annotatedPolicies: AnnotatePolicyConfig[];
+  /** Omitted policies */
+  omittedPolicies: OmitPolicyConfig[];
+  /** Privileged users (GUID → name resolution) */
+  privilegedUsers: PrivilegedUser[];
+  /** Conditional access policies with their user/group exclusions */
+  conditionalAccessPolicies: ConditionalAccessPolicySummary[];
+  /** Cross-referenced exclusion analysis per CAP */
+  exclusionAnalysis: CAPExclusionAnalysis[];
+}
+
 /** Baseline control definition */
 export interface BaselineControl {
   id: string;

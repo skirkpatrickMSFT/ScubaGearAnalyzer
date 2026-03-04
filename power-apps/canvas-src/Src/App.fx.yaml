@@ -6,6 +6,7 @@ App As appinfo:
         Set(varStorageLoading, false);
         Set(varStorageAccountName, "");
         Set(varContainerName, "");
-        Set(varSasToken, "")
+        Set(varSasToken, "");
+        Set(varUseManagedIdentity, false)
     Theme: =PowerAppsTheme
     StartScreen: =scrUpload

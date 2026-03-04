@@ -14,7 +14,8 @@ import { app, HttpRequest, HttpResponseInit, InvocationContext } from '@azure/fu
 import OpenAI from 'openai';
 import { getControlById, searchControls, getControlsBySection, AAD_SECTIONS, HIGHLY_PRIVILEGED_ROLES } from '../shared/baseline-data.js';
 import { searchLearn, fetchArticle, getLearnUrlsForControl, getSearchQueryForTopic } from '../shared/learn-fetcher.js';
-import { SCUBAGEAR_CURRENT_VERSION, extractProduct } from '../shared/scubagear-parser.js';
+import { SCUBAGEAR_CURRENT_VERSION, extractProduct, buildExclusionSummary } from '../shared/scubagear-parser.js';
+import type { ExclusionContext } from '../shared/types.js';
 import type { ChatCompletionMessageParam, ChatCompletionTool } from 'openai/resources/index';
 
 // ── OpenAI client ───────────────────────────────────────────
@@ -122,6 +123,21 @@ Always normalise to the full MS.PRODUCT.X.Xv1 format before passing to any tool.
 
 ### Scan result analysis
 When the user asks about a specific control (especially failures), use the **analyze_scan_result** tool to get the full scan details and produce a root-cause analysis. This tool combines the raw ScubaGear scan output with the official CISA baseline requirement. Always use this tool when the user asks "why did X fail?", "what's wrong with X?", "explain X", or similar. Extract specific findings: user names, group names, policy names, and settings that caused the result.
+
+### Exclusion analysis
+The user's scan data includes **exclusion configuration** from the ScubaGear config file and from Conditional Access Policies (CAPs). Use the **analyze_exclusions** tool when:
+- The user asks "what exclusions do I have?", "show me my exclusions", or "list exclusions"
+- A CAP-related control fails and you need to determine if unapproved exclusions are the cause
+- The user asks about CapExclusions, AnnotatePolicy, OmitPolicy, or excluded users/groups
+- Analysing any control that involves Conditional Access Policies (e.g. MS.AAD.3.6v1, MS.AAD.3.7v1, MS.AAD.3.8v1 and similar)
+
+Exclusion types:
+- **CapExclusions**: Approved user/group exclusions per control (e.g. break-glass accounts excluded from MS.AAD.3.6v1)
+- **AnnotatePolicy**: Policies marked for manual review with custom notes
+- **OmitPolicy**: Policies completely omitted from evaluation
+- **CAP ExcludeUsers/ExcludeGroups**: Users and groups excluded within each Conditional Access Policy — these may or may not be approved
+
+When a CAP-related control fails, ALWAYS call analyze_exclusions to check if unapproved exclusions are contributing to the failure. Cross-reference the CAP exclusions against the approved CapExclusions to identify gaps.
 
 ### Rego policy comparison
 For deeper root-cause analysis of failures, use the **fetch_rego_policy** tool to retrieve the actual OPA Rego rule that ScubaGear used to evaluate the control. Compare the Rego logic against the **ActualValue** data from the scan to pinpoint exactly which condition failed. Walk through the Rego rule step-by-step, showing which conditions passed and which didn't match the actual configuration. This is the most precise way to explain WHY a control failed.
@@ -303,10 +319,28 @@ const TOOLS: ChatCompletionTool[] = [
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'analyze_exclusions',
+      description: 'Analyse all exclusion data from the ScubaGear scan: approved CapExclusions per control, AnnotatePolicy/OmitPolicy configs, Conditional Access Policy ExcludeUsers/ExcludeGroups, and cross-referenced analysis showing which CAP exclusions are approved vs unapproved. Use when the user asks about exclusions, or when analysing CAP-related control failures to identify if unapproved exclusions are causing failures.',
+      parameters: {
+        type: 'object',
+        properties: {
+          controlId: {
+            type: 'string',
+            description: 'Optional: filter exclusion analysis to a specific control ID (e.g. MS.AAD.3.6v1). If omitted, returns all exclusion data.',
+          },
+        },
+        required: [],
+      },
+    },
+  },
 ];
 
 // ── Shared state for current request's control details ──────
 let _currentControlDetails: Record<string, { status: string; reportDetails: string; actualValue?: string }> = {};
+let _currentExclusionContext: ExclusionContext | null = null;
 
 // ── Tool dispatcher (calls local functions instead of MCP) ──
 async function dispatchToolCall(name: string, args: Record<string, unknown>): Promise<string> {
@@ -430,6 +464,81 @@ async function dispatchToolCall(name: string, args: Record<string, unknown>): Pr
 
         return output;
       }
+      case 'analyze_exclusions': {
+        if (!_currentExclusionContext) {
+          return 'No exclusion data available. The user may not have uploaded ScubaGear results, or the results did not contain a Raw section with exclusion configuration.';
+        }
+
+        const filterControlId = args.controlId as string | undefined;
+        let output = '';
+
+        if (filterControlId) {
+          // Filtered view for a specific control
+          output += `## Exclusion Analysis for ${filterControlId}\n\n`;
+
+          // Approved exclusions for this control
+          const approved = _currentExclusionContext.approvedExclusions.find(
+            (e) => e.controlId === filterControlId
+          );
+          if (approved && approved.capExclusions) {
+            output += `### Approved Exclusions (from scuba_config)\n`;
+            if (approved.capExclusions.users.length > 0) output += `- **Users:** ${approved.capExclusions.users.join(', ')}\n`;
+            if (approved.capExclusions.groups.length > 0) output += `- **Groups:** ${approved.capExclusions.groups.join(', ')}\n`;
+            output += '\n';
+          } else {
+            output += `No approved exclusions configured for ${filterControlId}.\n\n`;
+          }
+
+          // CAP exclusion analysis (all CAPs — the cross-reference is global, not per-control)
+          const capAnalysis = _currentExclusionContext.exclusionAnalysis;
+          const capsWithExclusions = capAnalysis.filter(
+            (a) => a.excludedUsers.length > 0 || a.excludedGroups.length > 0
+          );
+          if (capsWithExclusions.length > 0) {
+            output += `### Conditional Access Policy Exclusion Analysis\n`;
+            for (const analysis of capsWithExclusions) {
+              const approvedUsers = analysis.excludedUsers.filter((u) => u.approved);
+              const unapprovedUsers = analysis.excludedUsers.filter((u) => !u.approved);
+              const approvedGroups = analysis.excludedGroups.filter((g) => g.approved);
+              const unapprovedGroups = analysis.excludedGroups.filter((g) => !g.approved);
+
+              output += `\n**Policy:** ${analysis.policyName} (State: ${analysis.policyState})\n`;
+              if (approvedUsers.length > 0)
+                output += `- ✅ Approved excluded users: ${approvedUsers.map((u) => u.displayName).join(', ')}\n`;
+              if (unapprovedUsers.length > 0)
+                output += `- ⚠️ **Unapproved excluded users:** ${unapprovedUsers.map((u) => u.displayName || u.id).join(', ')}\n`;
+              if (approvedGroups.length > 0)
+                output += `- ✅ Approved excluded groups: ${approvedGroups.map((g) => g.id).join(', ')}\n`;
+              if (unapprovedGroups.length > 0)
+                output += `- ⚠️ **Unapproved excluded groups:** ${unapprovedGroups.map((g) => g.id).join(', ')}\n`;
+              if (unapprovedUsers.length === 0 && unapprovedGroups.length === 0)
+                output += `- ✅ All exclusions are approved\n`;
+            }
+          }
+
+          // Check AnnotatePolicy
+          const annotated = _currentExclusionContext.annotatedPolicies.find(
+            (a) => a.controlId === filterControlId
+          );
+          if (annotated) {
+            output += `\n### AnnotatePolicy\nThis control has been annotated: "${annotated.comment}" (incorrectResult: ${annotated.incorrectResult})\n`;
+          }
+
+          // Check OmitPolicy
+          const omitted = _currentExclusionContext.omittedPolicies.find(
+            (o) => o.controlId === filterControlId
+          );
+          if (omitted) {
+            output += `\n### OmitPolicy\n⏭️ This control has been **omitted** from evaluation via OmitPolicy config.\n`;
+            output += `Rationale: ${omitted.rationale}\nExpiration: ${omitted.expiration}\n`;
+          }
+        } else {
+          // Full summary
+          output = buildExclusionSummary(_currentExclusionContext);
+        }
+
+        return output;
+      }
       case 'fetch_rego_policy': {
         const controlId = args.controlId as string;
         const product = extractProduct(controlId);
@@ -472,6 +581,21 @@ app.http('chat', {
       };
 
       const { message, assessmentContext, history, controlDetails } = body;
+      const rawExclusionContext = (body as any).exclusionContext;
+
+      // Populate exclusion context for the analyze_exclusions tool
+      // Support both object (direct) and string (JSON-serialized from Power Apps) formats
+      if (rawExclusionContext && typeof rawExclusionContext === 'string') {
+        try {
+          _currentExclusionContext = JSON.parse(rawExclusionContext) as ExclusionContext;
+        } catch {
+          _currentExclusionContext = null;
+        }
+      } else if (rawExclusionContext && typeof rawExclusionContext === 'object') {
+        _currentExclusionContext = rawExclusionContext as ExclusionContext;
+      } else {
+        _currentExclusionContext = null;
+      }
 
       // Populate control details map for the analyze_scan_result tool
       _currentControlDetails = {};

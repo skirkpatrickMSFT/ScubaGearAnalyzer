@@ -12,7 +12,8 @@
 
 import { app, HttpRequest, HttpResponseInit, InvocationContext } from '@azure/functions';
 import { ContainerClient } from '@azure/storage-blob';
-import { detectAndParse, computeSummary, buildChatContext, PRODUCT_DISPLAY_NAMES } from '../shared/scubagear-parser.js';
+import { DefaultAzureCredential } from '@azure/identity';
+import { detectAndParse, computeSummary, buildChatContext, extractExclusionContext, getControlExclusionNote, PRODUCT_DISPLAY_NAMES } from '../shared/scubagear-parser.js';
 import type { ScubaProduct } from '../shared/types.js';
 
 app.http('storage-fetchBlob', {
@@ -29,24 +30,31 @@ app.http('storage-fetchBlob', {
       };
 
       const { storageAccountName, containerName, blobName } = body;
-      let sasToken = body.sasToken;
+      let sasToken = (body.sasToken || '').trim();
 
-      if (!storageAccountName || !containerName || !sasToken || !blobName) {
+      if (!storageAccountName || !containerName || !blobName) {
         return {
           status: 400,
           jsonBody: {
-            error: 'Missing required fields: storageAccountName, containerName, sasToken, blobName',
+            error: 'Missing required fields: storageAccountName, containerName, blobName',
           },
         };
       }
 
-      // Normalize SAS token
-      if (!sasToken.startsWith('?')) {
-        sasToken = '?' + sasToken;
-      }
+      let containerClient: ContainerClient;
 
-      const containerUrl = `https://${storageAccountName}.blob.core.windows.net/${containerName}${sasToken}`;
-      const containerClient = new ContainerClient(containerUrl);
+      if (sasToken) {
+        // SAS token auth
+        if (!sasToken.startsWith('?')) {
+          sasToken = '?' + sasToken;
+        }
+        const containerUrl = `https://${storageAccountName}.blob.core.windows.net/${containerName}${sasToken}`;
+        containerClient = new ContainerClient(containerUrl);
+      } else {
+        // Managed Identity / DefaultAzureCredential auth
+        const containerUrl = `https://${storageAccountName}.blob.core.windows.net/${containerName}`;
+        containerClient = new ContainerClient(containerUrl, new DefaultAzureCredential());
+      }
       const blobClient = containerClient.getBlobClient(blobName);
 
       // Download blob content
@@ -70,7 +78,8 @@ app.http('storage-fetchBlob', {
       }
 
       const summary = computeSummary(controls);
-      const chatContext = buildChatContext(controls);
+      const exclusionContext = extractExclusionContext(data);
+      const chatContext = buildChatContext(controls, exclusionContext);
 
       const productBreakdown = (Object.keys(PRODUCT_DISPLAY_NAMES) as ScubaProduct[])
         .filter((p) => summary.byProduct[p].total > 0)
@@ -85,19 +94,24 @@ app.http('storage-fetchBlob', {
             : 0,
         }));
 
-      const controlsList = controls.map((c) => ({
-        controlId: c.controlId,
-        product: c.product,
-        productDisplayName: PRODUCT_DISPLAY_NAMES[c.product] || c.product,
-        section: c.section,
-        status: c.status,
-        criticality: c.criticality,
-        reportDetails: c.reportDetails.slice(0, 500),
-        requirementMet: c.requirementMet,
-        isOmitted: c.isOmitted || false,
-        isIncorrectResult: c.isIncorrectResult || false,
-        actualValue: c.actualValue ? c.actualValue.slice(0, 8000) : '',
-      }));
+      const controlsList = controls.map((c) => {
+        const excNote = getControlExclusionNote(c.controlId, exclusionContext);
+        return {
+          controlId: c.controlId,
+          product: c.product,
+          productDisplayName: PRODUCT_DISPLAY_NAMES[c.product] || c.product,
+          section: c.section,
+          status: c.status,
+          criticality: c.criticality,
+          reportDetails: c.reportDetails.slice(0, 500),
+          requirementMet: c.requirementMet,
+          isOmitted: c.isOmitted || false,
+          isIncorrectResult: c.isIncorrectResult || false,
+          actualValue: c.actualValue ? c.actualValue.slice(0, 8000) : '',
+          hasExclusions: excNote.length > 0,
+          exclusionNote: excNote,
+        };
+      });
 
       return {
         status: 200,
@@ -119,6 +133,7 @@ app.http('storage-fetchBlob', {
           productBreakdown,
           controls: controlsList,
           chatContext,
+          exclusionContext: exclusionContext ? JSON.stringify(exclusionContext) : null,
         },
       };
     } catch (error: any) {
@@ -127,7 +142,7 @@ app.http('storage-fetchBlob', {
       if (error.statusCode === 403) {
         return {
           status: 403,
-          jsonBody: { error: 'Access denied. The SAS token may be expired, invalid, or lack Read permission.' },
+          jsonBody: { error: 'Access denied. If using SAS, it may be expired or lack Read permission. If using Managed Identity, ensure the function app has Storage Blob Data Reader role on the storage account.' },
         };
       }
       if (error.statusCode === 404) {

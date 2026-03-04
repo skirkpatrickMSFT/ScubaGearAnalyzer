@@ -13,6 +13,14 @@ import type {
   AssessmentSummary,
   ScubaResultsControl,
   ScubaResultsGroup,
+  ExclusionContext,
+  ControlExclusionConfig,
+  AnnotatePolicyConfig,
+  OmitPolicyConfig,
+  PrivilegedUser,
+  ConditionalAccessPolicySummary,
+  CAPExclusionAnalysis,
+  CAPCategory,
 } from './types.js';
 
 /** Map of product abbreviations to display names */
@@ -190,6 +198,397 @@ export function detectAndParse(data: unknown): { controls: ParsedControl[]; form
   return { controls: [], format: 'unknown' };
 }
 
+// ── Exclusion Context Extraction ─────────────────────────────
+
+/**
+ * Classify a conditional access policy into a category based on its configuration.
+ * This determines which ScubaGear control the policy is relevant to.
+ */
+function classifyPolicy(cap: ConditionalAccessPolicySummary): CAPCategory {
+  const targetsAllUsers = cap.includeUsers.includes('All');
+  const targetsRoles = cap.includeRoles.length > 0;
+  const hasPhishingResistantAuth = cap.authStrengthName.toLowerCase().includes('phishing');
+  const requiresMfa = cap.grantControls.includes('mfa');
+  const requiresBlock = cap.grantControls.includes('block');
+  const requiresManagedDevice =
+    cap.grantControls.includes('compliantDevice') ||
+    cap.grantControls.includes('domainJoinedDevice');
+  const isRiskBased = cap.userRiskLevels.length > 0 || cap.signInRiskLevels.length > 0;
+  const isLegacyAuth =
+    cap.clientAppTypes.includes('exchangeActiveSync') ||
+    cap.clientAppTypes.includes('other');
+  const isDeviceCodeBlock = cap.hasDeviceCodeFlowCondition;
+
+  // Order matters — more specific checks first
+  if (isDeviceCodeBlock && requiresBlock) return 'block-device-code';
+  if (isLegacyAuth && requiresBlock) return 'block-legacy-auth';
+  if (isRiskBased) return 'risk-based';
+  if (targetsRoles && (hasPhishingResistantAuth || requiresMfa)) return 'phishing-resistant-mfa-privileged-roles';
+  if (requiresManagedDevice) return 'require-managed-device';
+  if (targetsAllUsers && hasPhishingResistantAuth) return 'phishing-resistant-mfa-all-users';
+  if (targetsAllUsers && requiresMfa) return 'mfa-all-users';
+  return 'other';
+}
+
+/**
+ * Map a ScubaGear MS.AAD.3.x control to the CAP categories it evaluates.
+ * Returns null for non-CAP-based controls (3.3, 3.4, 3.5).
+ */
+function getRelevantCAPCategories(controlId: string): CAPCategory[] | null {
+  // Normalise to just the base control (strip version e.g. 3.1v1 → 3.1)
+  const match = controlId.match(/^MS\.AAD\.3\.(\d+)/);
+  if (!match) return null;
+  const controlNum = parseInt(match[1], 10);
+
+  switch (controlNum) {
+    case 1: // Phishing-resistant MFA for all users
+      return ['phishing-resistant-mfa-all-users'];
+    case 2: // Alternative MFA for all users
+      return ['mfa-all-users'];
+    case 3: // Microsoft Authenticator config — NOT CAP-based
+    case 4: // Authentication Methods Migration — NOT CAP-based
+    case 5: // Disable SMS/Voice/Email OTP — NOT CAP-based
+      return null;
+    case 6: // Phishing-resistant MFA for privileged roles
+      return ['phishing-resistant-mfa-privileged-roles'];
+    case 7: // Managed devices required for authentication
+    case 8: // Managed devices for MFA registration
+      return ['require-managed-device'];
+    case 9: // Block device code authentication
+      return ['block-device-code'];
+    default:
+      return null;
+  }
+}
+
+/**
+ * Extract exclusion-related data from the Raw section of a ScubaResults JSON.
+ * This includes:
+ * - Approved CAP exclusions from scuba_config
+ * - AnnotatePolicy / OmitPolicy overrides
+ * - Privileged users (GUID-to-name mapping)
+ * - Conditional access policies with their user/group exclusions
+ * - Cross-referenced exclusion analysis
+ */
+export function extractExclusionContext(data: unknown): ExclusionContext | null {
+  if (!data || typeof data !== 'object') return null;
+
+  const root = data as Record<string, unknown>;
+  const raw = root.Raw as Record<string, unknown> | undefined;
+  if (!raw) return null;
+
+  const scubaConfig = raw.scuba_config as Record<string, unknown> | undefined;
+  const capPolicies = raw.conditional_access_policies as unknown[] | undefined;
+  const privUsers = raw.privileged_users as Record<string, unknown> | undefined;
+
+  // 1. Extract approved exclusions from scuba_config per-product sections
+  const approvedExclusions: ControlExclusionConfig[] = [];
+  if (scubaConfig) {
+    for (const [key, value] of Object.entries(scubaConfig)) {
+      // Product-level keys like "Aad", "Defender", etc. contain per-control configs
+      if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+        const productConfig = value as Record<string, unknown>;
+        for (const [controlId, controlConfig] of Object.entries(productConfig)) {
+          if (!controlId.startsWith('MS.')) continue;
+          const cc = controlConfig as Record<string, unknown>;
+          if (cc.CapExclusions) {
+            const ce = cc.CapExclusions as Record<string, unknown>;
+            approvedExclusions.push({
+              controlId,
+              capExclusions: {
+                users: Array.isArray(ce.Users) ? ce.Users.map(String) : [],
+                groups: Array.isArray(ce.Groups) ? ce.Groups.map(String) : [],
+              },
+            });
+          }
+        }
+      }
+    }
+  }
+
+  // 2. Extract AnnotatePolicy overrides
+  const annotatedPolicies: AnnotatePolicyConfig[] = [];
+  if (scubaConfig?.AnnotatePolicy && typeof scubaConfig.AnnotatePolicy === 'object') {
+    for (const [controlId, config] of Object.entries(scubaConfig.AnnotatePolicy as Record<string, unknown>)) {
+      const c = config as Record<string, unknown>;
+      annotatedPolicies.push({
+        controlId,
+        incorrectResult: !!c.IncorrectResult,
+        comment: String(c.Comment || ''),
+      });
+    }
+  }
+
+  // 3. Extract OmitPolicy overrides
+  const omittedPolicies: OmitPolicyConfig[] = [];
+  if (scubaConfig?.OmitPolicy && typeof scubaConfig.OmitPolicy === 'object') {
+    for (const [controlId, config] of Object.entries(scubaConfig.OmitPolicy as Record<string, unknown>)) {
+      const c = config as Record<string, unknown>;
+      omittedPolicies.push({
+        controlId,
+        expiration: String(c.Expiration || ''),
+        rationale: String(c.Rationale || ''),
+      });
+    }
+  }
+
+  // 4. Extract privileged users (GUID → name mapping)
+  const privilegedUsers: PrivilegedUser[] = [];
+  if (privUsers && typeof privUsers === 'object') {
+    for (const [id, userData] of Object.entries(privUsers)) {
+      const u = userData as Record<string, unknown>;
+      privilegedUsers.push({
+        id,
+        displayName: String(u.DisplayName || 'Unknown'),
+        roles: Array.isArray(u.roles) ? u.roles.map(String) : [],
+        onPremisesImmutableId: u.OnPremisesImmutableId != null ? String(u.OnPremisesImmutableId) : null,
+      });
+    }
+  }
+
+  // 5. Extract conditional access policies
+  const conditionalAccessPolicies: ConditionalAccessPolicySummary[] = [];
+  if (Array.isArray(capPolicies)) {
+    for (const policy of capPolicies) {
+      const p = policy as Record<string, unknown>;
+      const conditions = p.Conditions as Record<string, unknown> | undefined;
+      const users = conditions?.Users as Record<string, unknown> | undefined;
+      const grantControls = p.GrantControls as Record<string, unknown> | undefined;
+      const authStrength = grantControls?.AuthenticationStrength as Record<string, unknown> | undefined;
+      const authFlows = conditions?.AuthenticationFlows as Record<string, unknown> | undefined;
+
+      const capSummary: ConditionalAccessPolicySummary = {
+        id: String(p.Id || ''),
+        displayName: String(p.DisplayName || ''),
+        state: String(p.State || ''),
+        excludeUsers: Array.isArray(users?.ExcludeUsers) ? users!.ExcludeUsers.map(String) : [],
+        excludeGroups: Array.isArray(users?.ExcludeGroups) ? users!.ExcludeGroups.map(String) : [],
+        includeUsers: Array.isArray(users?.IncludeUsers) ? users!.IncludeUsers.map(String) : [],
+        includeGroups: Array.isArray(users?.IncludeGroups) ? users!.IncludeGroups.map(String) : [],
+        includeRoles: Array.isArray(users?.IncludeRoles) ? users!.IncludeRoles.map(String) : [],
+        grantControls: Array.isArray(grantControls?.BuiltInControls)
+          ? grantControls!.BuiltInControls.map(String)
+          : [],
+        clientAppTypes: Array.isArray(conditions?.ClientAppTypes)
+          ? (conditions!.ClientAppTypes as string[]).map(String)
+          : [],
+        authStrengthName: authStrength?.DisplayName ? String(authStrength.DisplayName) : '',
+        userRiskLevels: Array.isArray(conditions?.UserRiskLevels)
+          ? (conditions!.UserRiskLevels as string[]).map(String)
+          : [],
+        signInRiskLevels: Array.isArray(conditions?.SignInRiskLevels)
+          ? (conditions!.SignInRiskLevels as string[]).filter((r) => r && r.length > 0).map(String)
+          : [],
+        hasDeviceCodeFlowCondition: String(authFlows?.TransferMethods || '').toLowerCase().includes('devicecode'),
+        category: 'other', // computed below
+      };
+      capSummary.category = classifyPolicy(capSummary);
+      conditionalAccessPolicies.push(capSummary);
+    }
+  }
+
+  // 6. Build cross-referenced exclusion analysis
+  // Collect ALL approved user/group IDs across all control exclusion configs
+  const allApprovedUsers = new Set<string>();
+  const allApprovedGroups = new Set<string>();
+  for (const exc of approvedExclusions) {
+    if (exc.capExclusions) {
+      for (const u of exc.capExclusions.users) allApprovedUsers.add(u.toLowerCase());
+      for (const g of exc.capExclusions.groups) allApprovedGroups.add(g.toLowerCase());
+    }
+  }
+
+  const exclusionAnalysis: CAPExclusionAnalysis[] = [];
+  for (const cap of conditionalAccessPolicies) {
+    // Only analyze active/report-only policies that apply broadly (include "All" users)
+    if (cap.state === 'disabled') continue;
+    if (!cap.includeUsers.includes('All') && cap.includeRoles.length === 0) continue;
+
+    const excludedUsers = cap.excludeUsers.map((uid) => {
+      const priv = privilegedUsers.find((pu) => pu.id === uid);
+      return {
+        id: uid,
+        displayName: priv?.displayName || uid,
+        approved: allApprovedUsers.has(uid.toLowerCase()),
+      };
+    });
+
+    const excludedGroups = cap.excludeGroups.map((gid) => ({
+      id: gid,
+      approved: allApprovedGroups.has(gid.toLowerCase()),
+    }));
+
+    const unapprovedUserCount = excludedUsers.filter((u) => !u.approved).length;
+    const unapprovedGroupCount = excludedGroups.filter((g) => !g.approved).length;
+
+    exclusionAnalysis.push({
+      policyId: cap.id,
+      policyName: cap.displayName,
+      policyState: cap.state,
+      policyCategory: cap.category,
+      excludedUsers,
+      excludedGroups,
+      unapprovedUserCount,
+      unapprovedGroupCount,
+    });
+  }
+
+  return {
+    approvedExclusions,
+    annotatedPolicies,
+    omittedPolicies,
+    privilegedUsers,
+    conditionalAccessPolicies,
+    exclusionAnalysis,
+  };
+}
+
+/**
+ * Get exclusion note for a specific control ID.
+ * Returns a short human-readable note (or empty string if no exclusions apply).
+ */
+export function getControlExclusionNote(controlId: string, ctx: ExclusionContext | null): string {
+  if (!ctx) return '';
+  const notes: string[] = [];
+
+  // Check if control has approved CAP exclusions
+  const approved = ctx.approvedExclusions.find((e) => e.controlId === controlId);
+  if (approved && approved.capExclusions) {
+    const userCount = approved.capExclusions.users.length;
+    const groupCount = approved.capExclusions.groups.length;
+    const parts: string[] = [];
+    if (userCount > 0) parts.push(`${userCount} user(s)`);
+    if (groupCount > 0) parts.push(`${groupCount} group(s)`);
+    notes.push(`✅ Approved: ${parts.join(', ')}`);
+  }
+
+  // Check if control is annotated (false positive)
+  const annotated = ctx.annotatedPolicies.find((a) => a.controlId === controlId);
+  if (annotated) {
+    notes.push(`📝 False positive`);
+  }
+
+  // Check if control is omitted
+  const omitted = ctx.omittedPolicies.find((o) => o.controlId === controlId);
+  if (omitted) {
+    notes.push(`⏭️ Omitted until ${omitted.expiration}`);
+  }
+
+  // For AAD Section 3 (Conditional Access) controls, check relevant CAPs only
+  const relevantCategories = getRelevantCAPCategories(controlId);
+  if (relevantCategories) {
+    // Filter to only policies whose category matches this control's concern
+    const relevantAnalysis = ctx.exclusionAnalysis.filter(
+      (a) =>
+        relevantCategories.includes(a.policyCategory) &&
+        (a.unapprovedUserCount > 0 || a.unapprovedGroupCount > 0),
+    );
+    if (relevantAnalysis.length > 0) {
+      // Compact per-policy detail with user/group breakdown
+      const parts: string[] = [];
+      for (const a of relevantAnalysis) {
+        const details: string[] = [];
+        if (a.unapprovedUserCount > 0) details.push(`${a.unapprovedUserCount} user(s)`);
+        if (a.unapprovedGroupCount > 0) details.push(`${a.unapprovedGroupCount} group(s)`);
+        parts.push(`${a.policyName} [${details.join(', ')}]`);
+      }
+      notes.push(`⚠️ Unapproved exclusions: ${parts.join('; ')}`);
+    }
+  }
+
+  return notes.join(' | ');
+}
+
+/**
+ * Resolve a user GUID to a display name using the privileged users list.
+ */
+export function resolveUserName(userId: string, privilegedUsers: PrivilegedUser[]): string {
+  const user = privilegedUsers.find((u) => u.id === userId);
+  return user ? `${user.displayName} (${userId})` : userId;
+}
+
+/**
+ * Build a human-readable exclusion summary for chat context.
+ */
+export function buildExclusionSummary(ctx: ExclusionContext): string {
+  const lines: string[] = ['# Exclusion & Override Configuration\n'];
+
+  // Approved exclusions
+  if (ctx.approvedExclusions.length > 0) {
+    lines.push('## Approved CAP Exclusions (from ScubaGear config)');
+    for (const exc of ctx.approvedExclusions) {
+      lines.push(`### ${exc.controlId}`);
+      if (exc.capExclusions) {
+        if (exc.capExclusions.users.length > 0) {
+          lines.push('**Approved excluded users:**');
+          for (const uid of exc.capExclusions.users) {
+            lines.push(`  - ${resolveUserName(uid, ctx.privilegedUsers)}`);
+          }
+        }
+        if (exc.capExclusions.groups.length > 0) {
+          lines.push('**Approved excluded groups:**');
+          for (const gid of exc.capExclusions.groups) {
+            lines.push(`  - ${gid}`);
+          }
+        }
+      }
+    }
+    lines.push('');
+  }
+
+  // Policy overrides
+  if (ctx.annotatedPolicies.length > 0) {
+    lines.push('## Annotated Policies (marked as false positive)');
+    for (const ap of ctx.annotatedPolicies) {
+      lines.push(`- **${ap.controlId}**: ${ap.comment}`);
+    }
+    lines.push('');
+  }
+  if (ctx.omittedPolicies.length > 0) {
+    lines.push('## Omitted Policies');
+    for (const op of ctx.omittedPolicies) {
+      lines.push(`- **${op.controlId}**: Expires ${op.expiration} — ${op.rationale}`);
+    }
+    lines.push('');
+  }
+
+  // CAP exclusion analysis
+  const capsWithExclusions = ctx.exclusionAnalysis.filter(
+    (a) => a.excludedUsers.length > 0 || a.excludedGroups.length > 0,
+  );
+  if (capsWithExclusions.length > 0) {
+    lines.push('## Conditional Access Policy Exclusion Analysis');
+    lines.push('Policies with user/group exclusions (cross-referenced against approved list):\n');
+    for (const cap of capsWithExclusions) {
+      const stateLabel = cap.policyState === 'enabled' ? '🟢 On'
+        : cap.policyState === 'enabledForReportingButNotEnforced' ? '🟡 Report-only'
+          : cap.policyState;
+      lines.push(`### ${cap.policyName} [${stateLabel}]`);
+
+      if (cap.excludedUsers.length > 0) {
+        lines.push('**Excluded users:**');
+        for (const u of cap.excludedUsers) {
+          const tag = u.approved ? '✅ approved' : '⚠️ NOT in approved list';
+          lines.push(`  - ${u.displayName} — ${tag}`);
+        }
+      }
+      if (cap.excludedGroups.length > 0) {
+        lines.push('**Excluded groups:**');
+        for (const g of cap.excludedGroups) {
+          const tag = g.approved ? '✅ approved' : '⚠️ NOT in approved list';
+          lines.push(`  - ${g.id} — ${tag}`);
+        }
+      }
+      if (cap.unapprovedUserCount > 0 || cap.unapprovedGroupCount > 0) {
+        lines.push(`⚠️ **${cap.unapprovedUserCount} unapproved user(s), ${cap.unapprovedGroupCount} unapproved group(s)** — these may cause MS.AAD.3.6v1 or related controls to fail.`);
+      }
+      lines.push('');
+    }
+  }
+
+  return lines.join('\n');
+}
+
 export function computeSummary(controls: ParsedControl[]): AssessmentSummary {
   const products = Object.keys(PRODUCT_DISPLAY_NAMES) as ScubaProduct[];
   const byProduct = {} as Record<ScubaProduct, { total: number; pass: number; fail: number }>;
@@ -213,9 +612,9 @@ export function computeSummary(controls: ParsedControl[]): AssessmentSummary {
   };
 }
 
-const MAX_CONTEXT_CHARS = 80_000;
+const MAX_CONTEXT_CHARS = 120_000;
 
-export function buildChatContext(controls: ParsedControl[]): string {
+export function buildChatContext(controls: ParsedControl[], exclusionCtx?: ExclusionContext | null): string {
   const lines: string[] = ['# ScubaGear Assessment Results\n'];
   const products = [...new Set(controls.map((c) => c.product))].sort();
   for (const product of products) {
@@ -244,6 +643,13 @@ export function buildChatContext(controls: ParsedControl[]): string {
     }
     lines.push('');
   }
+
+  // Append exclusion context if available
+  if (exclusionCtx) {
+    lines.push('\n---\n');
+    lines.push(buildExclusionSummary(exclusionCtx));
+  }
+
   const context = lines.join('\n');
   if (context.length > MAX_CONTEXT_CHARS) {
     return context.slice(0, MAX_CONTEXT_CHARS) + '\n\n[Context truncated due to size]';

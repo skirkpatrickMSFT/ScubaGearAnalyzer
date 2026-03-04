@@ -10,7 +10,7 @@
  */
 
 import { app, HttpRequest, HttpResponseInit, InvocationContext } from '@azure/functions';
-import { detectAndParse, computeSummary, buildChatContext, PRODUCT_DISPLAY_NAMES } from '../shared/scubagear-parser.js';
+import { detectAndParse, computeSummary, buildChatContext, extractExclusionContext, getControlExclusionNote, PRODUCT_DISPLAY_NAMES } from '../shared/scubagear-parser.js';
 import type { ScubaProduct } from '../shared/types.js';
 
 app.http('parse-results', {
@@ -37,7 +37,11 @@ app.http('parse-results', {
       }
 
       const summary = computeSummary(controls);
-      const chatContext = buildChatContext(controls);
+
+      // Extract exclusion context from Raw data (CAP exclusions, AnnotatePolicy, OmitPolicy, etc.)
+      const exclusionContext = extractExclusionContext(data);
+
+      const chatContext = buildChatContext(controls, exclusionContext);
 
       // Build product breakdown for Power Apps dashboard
       const productBreakdown = (Object.keys(PRODUCT_DISPLAY_NAMES) as ScubaProduct[])
@@ -54,19 +58,24 @@ app.http('parse-results', {
         }));
 
       // Build controls list for Power Apps gallery/table
-      const controlsList = controls.map((c) => ({
-        controlId: c.controlId,
-        product: c.product,
-        productDisplayName: PRODUCT_DISPLAY_NAMES[c.product] || c.product,
-        section: c.section,
-        status: c.status,
-        criticality: c.criticality,
-        reportDetails: c.reportDetails.slice(0, 500),
-        requirementMet: c.requirementMet,
-        isOmitted: c.isOmitted || false,
-        isIncorrectResult: c.isIncorrectResult || false,
-        actualValue: c.actualValue ? c.actualValue.slice(0, 8000) : '',
-      }));
+      const controlsList = controls.map((c) => {
+        const excNote = getControlExclusionNote(c.controlId, exclusionContext);
+        return {
+          controlId: c.controlId,
+          product: c.product,
+          productDisplayName: PRODUCT_DISPLAY_NAMES[c.product] || c.product,
+          section: c.section,
+          status: c.status,
+          criticality: c.criticality,
+          reportDetails: c.reportDetails.slice(0, 500),
+          requirementMet: c.requirementMet,
+          isOmitted: c.isOmitted || false,
+          isIncorrectResult: c.isIncorrectResult || false,
+          actualValue: c.actualValue ? c.actualValue.slice(0, 8000) : '',
+          hasExclusions: excNote.length > 0,
+          exclusionNote: excNote,
+        };
+      });
 
       return {
         status: 200,
@@ -87,6 +96,7 @@ app.http('parse-results', {
           productBreakdown,
           controls: controlsList,
           chatContext, // Send to chat endpoint for grounded responses
+          exclusionContext: exclusionContext ? JSON.stringify(exclusionContext) : null, // Stringified for Power Apps compatibility
         },
       };
     } catch (error: any) {

@@ -20,3 +20,7 @@ power-apps/ScubaGearAnalyzer.msapp
 # Package output
 release/
 *.zip
+
+# Environment secrets
+.env
+azure-functions/local.settings.json

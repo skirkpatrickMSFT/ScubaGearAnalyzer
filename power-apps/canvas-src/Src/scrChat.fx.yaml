@@ -100,7 +100,8 @@ scrChat As screen:
                             reportDetails: reportDetails,
                             actualValue: actualValue
                         }
-                    )
+                    ),
+                    exclusionContext: JSON(varExclusionContext, JSONFormat.IgnoreUnsupportedTypes)
                 })
             );
             Collect(colChatHistory, {role: "assistant", content: varChatResponse.response});

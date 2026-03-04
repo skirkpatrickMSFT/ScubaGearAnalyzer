@@ -5,15 +5,20 @@
  * Query params:
  *   - storageAccountName: Azure Storage account name
  *   - containerName: Blob container name
- *   - sasToken: Shared Access Signature token (query string, with or without leading ?)
+ *   - sasToken: (optional) Shared Access Signature token. If omitted, uses Managed Identity.
  *   - prefix: (optional) Blob name prefix filter (e.g. "2026/02/")
  *
  * Lists blobs in a ScubaConnect output container so users can
  * browse ScubaGear result files and pick one to load.
+ *
+ * Authentication:
+ *   1. If sasToken is provided → SAS-based auth (existing behaviour)
+ *   2. If sasToken is omitted  → DefaultAzureCredential (Managed Identity / az login)
  */
 
 import { app, HttpRequest, HttpResponseInit, InvocationContext } from '@azure/functions';
 import { ContainerClient } from '@azure/storage-blob';
+import { DefaultAzureCredential } from '@azure/identity';
 
 app.http('storage-listBlobs', {
   methods: ['GET'],
@@ -23,25 +28,35 @@ app.http('storage-listBlobs', {
     try {
       const storageAccountName = request.query.get('storageAccountName');
       const containerName = request.query.get('containerName');
-      let sasToken = request.query.get('sasToken');
+      let sasToken = (request.query.get('sasToken') || '').trim();
       const prefix = request.query.get('prefix') || '';
 
-      if (!storageAccountName || !containerName || !sasToken) {
+      if (!storageAccountName || !containerName) {
         return {
           status: 400,
           jsonBody: {
-            error: 'Missing required query parameters: storageAccountName, containerName, sasToken',
+            error: 'Missing required query parameters: storageAccountName, containerName',
           },
         };
       }
 
-      // Normalize SAS token — ensure it starts with '?'
-      if (!sasToken.startsWith('?')) {
-        sasToken = '?' + sasToken;
-      }
+      let containerClient: ContainerClient;
+      let authMethod: string;
 
-      const containerUrl = `https://${storageAccountName}.blob.core.windows.net/${containerName}${sasToken}`;
-      const containerClient = new ContainerClient(containerUrl);
+      if (sasToken) {
+        // SAS token auth
+        if (!sasToken.startsWith('?')) {
+          sasToken = '?' + sasToken;
+        }
+        const containerUrl = `https://${storageAccountName}.blob.core.windows.net/${containerName}${sasToken}`;
+        containerClient = new ContainerClient(containerUrl);
+        authMethod = 'sas';
+      } else {
+        // Managed Identity / DefaultAzureCredential auth
+        const containerUrl = `https://${storageAccountName}.blob.core.windows.net/${containerName}`;
+        containerClient = new ContainerClient(containerUrl, new DefaultAzureCredential());
+        authMethod = 'managed-identity';
+      }
 
       const blobs: Array<{
         name: string;
@@ -69,6 +84,7 @@ app.http('storage-listBlobs', {
           storageAccountName,
           containerName,
           prefix,
+          authMethod,
           count: blobs.length,
           blobs,
         },
@@ -80,7 +96,7 @@ app.http('storage-listBlobs', {
       if (error.statusCode === 403) {
         return {
           status: 403,
-          jsonBody: { error: 'Access denied. The SAS token may be expired, invalid, or lack List permission.' },
+          jsonBody: { error: 'Access denied. If using SAS, it may be expired or lack List permission. If using Managed Identity, ensure the function app has Storage Blob Data Reader role on the storage account.' },
         };
       }
       if (error.statusCode === 404) {

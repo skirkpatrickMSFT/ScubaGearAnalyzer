@@ -79,6 +79,47 @@ This single command creates all Azure resources and deploys the backend:
 
 **Save these values** — you'll use them in Phase 4.
 
+### Storage authentication
+
+The storage endpoints (`list-blobs` and `fetch-blob`) support two authentication
+methods:
+
+| Method | When to use | Setup |
+|--------|-------------|-------|
+| **SAS Token** | Quick testing, cross-tenant access | Pass a `sasToken` parameter in each request |
+| **Managed Identity** | Production, same-tenant | Omit `sasToken` — the function app uses its system-assigned identity |
+
+Managed Identity is enabled automatically during deployment. The function app is
+granted **Storage Blob Data Reader** on its own storage account by default.
+
+To also grant access to an external storage account (e.g., where ScubaGear
+uploads results), re-run the deployment with:
+
+```powershell
+.\deploy-functions.ps1 -ResourceGroupName <your-rg-name> `
+    -ExternalStorageAccountName <storage-name> `
+    -ExternalStorageResourceGroup <storage-rg>   # optional, defaults to same RG
+```
+
+Or assign the role manually via the Azure CLI:
+
+```powershell
+$principalId = az functionapp identity show `
+    --name <your-func-app> --resource-group <your-rg> `
+    --query principalId -o tsv
+
+$storageId = az storage account show `
+    --name <storage-name> --resource-group <storage-rg> `
+    --query id -o tsv
+
+az role assignment create `
+    --assignee $principalId `
+    --role "Storage Blob Data Reader" `
+    --scope $storageId
+```
+
+> **Note:** RBAC role assignments can take up to 5 minutes to propagate.
+
 ### Verify the deployment
 
 Test an endpoint to confirm the functions are running:

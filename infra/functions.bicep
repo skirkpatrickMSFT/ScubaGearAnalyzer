@@ -22,6 +22,12 @@ param openAiApiKey string
 @description('Allowed CORS origins (Power Apps domain)')
 param allowedOrigins string = 'https://*.powerapps.com'
 
+@description('Optional: name of an external storage account (e.g. for ScubaGear results) to grant the function app\'s Managed Identity read access. Leave empty to skip.')
+param externalStorageAccountName string = ''
+
+@description('Optional: resource group of the external storage account. Defaults to this resource group.')
+param externalStorageResourceGroup string = resourceGroup().name
+
 // ── Derived names ──────────────────────────────────────────
 
 var uniqueSuffix = uniqueString(resourceGroup().id)
@@ -103,6 +109,9 @@ resource functionApp 'Microsoft.Web/sites@2024-04-01' = {
   name: functionAppName
   location: location
   kind: 'functionapp,linux'
+  identity: {
+    type: 'SystemAssigned'
+  }
   properties: {
     serverFarmId: appServicePlan.id
     httpsOnly: true
@@ -170,6 +179,32 @@ resource functionApp 'Microsoft.Web/sites@2024-04-01' = {
   tags: {
     project: 'ScubaGearAnalyzer'
     component: 'functions'
+  }
+}
+
+// ── RBAC: Storage Blob Data Reader on the built-in storage ─
+
+@description('Storage Blob Data Reader built-in role')
+var storageBlobDataReaderRoleId = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '2a2b9908-6ea1-4ae2-8e65-a410df84e7d1')
+
+resource builtInStorageRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(storageAccount.id, functionApp.id, storageBlobDataReaderRoleId)
+  scope: storageAccount
+  properties: {
+    principalId: functionApp.identity.principalId
+    roleDefinitionId: storageBlobDataReaderRoleId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// ── RBAC: Storage Blob Data Reader on external storage (optional) ─
+
+module externalStorageRbac 'external-storage-rbac.bicep' = if (!empty(externalStorageAccountName)) {
+  name: 'externalStorageRbac'
+  scope: resourceGroup(externalStorageResourceGroup)
+  params: {
+    storageAccountName: externalStorageAccountName
+    functionAppPrincipalId: functionApp.identity.principalId
   }
 }
 

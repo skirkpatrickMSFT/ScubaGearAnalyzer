@@ -77,6 +77,7 @@ scrUpload As screen:
             ClearCollect(colProducts, varResults.productBreakdown);
             ClearCollect(colControls, varResults.controls);
             Set(varChatContext, varResults.chatContext);
+            Set(varExclusionContext, varResults.exclusionContext);
             Set(varIsLoaded, true)
 
     lblStorageAccount As label:
@@ -124,7 +125,7 @@ scrUpload As screen:
         Height: =30
         Text: ="SAS Token:"
         Size: =11
-        Visible: =varUploadMode = "storage"
+        Visible: =varUploadMode = "storage" && !varUseManagedIdentity
 
     txtSasToken As text:
         X: =170
@@ -133,8 +134,30 @@ scrUpload As screen:
         Height: =30
         HintText: ="?sv=2023-01-03&ss=b&srt=co&sp=rl&se=..."
         Size: =9
-        Visible: =varUploadMode = "storage"
+        Visible: =varUploadMode = "storage" && !varUseManagedIdentity
         Default: =varSasToken
+
+    lblAuthMethod As label:
+        X: =20
+        Y: =196
+        Width: =200
+        Height: =30
+        Text: ="Using Managed Identity ✓"
+        Size: =11
+        FontWeight: =FontWeight.Semibold
+        Color: =RGBA(16, 124, 16, 1)
+        Visible: =varUploadMode = "storage" && varUseManagedIdentity
+
+    tglAuthMethod As toggleSwitch:
+        X: =490
+        Y: =158
+        Width: =190
+        Height: =30
+        Label: ="Managed Identity"
+        Size: =10
+        Default: =varUseManagedIdentity
+        Visible: =varUploadMode = "storage"
+        OnChange: =Set(varUseManagedIdentity, Self.Checked)
 
     btnSaveSettings As button:
         X: =510
@@ -154,7 +177,8 @@ scrUpload As screen:
                 Table({
                     account: txtStorageAccount.Text,
                     container: txtContainer.Text,
-                    sas: txtSasToken.Text
+                    sas: txtSasToken.Text,
+                    useMI: varUseManagedIdentity
                 }),
                 "ScubaStorageSettings"
             );
@@ -188,7 +212,7 @@ scrUpload As screen:
         Color: =RGBA(255, 255, 255, 1)
         Visible: =varUploadMode = "storage"
         OnSelect: |-
-            =Set(varBlobResult, APIScubaGearAnalyzer.ListBlobs(txtStorageAccount.Text, txtContainer.Text, txtSasToken.Text));
+            =Set(varBlobResult, APIScubaGearAnalyzer.ListBlobs(txtStorageAccount.Text, txtContainer.Text, If(varUseManagedIdentity, Blank(), txtSasToken.Text)));
             ClearCollect(colBlobs, varBlobResult.blobs)
 
     lblBlobCount As label:
@@ -230,10 +254,11 @@ scrUpload As screen:
         Text: ="Load Selected"
         Visible: =varUploadMode = "storage" && CountRows(colBlobs) > 0
         OnSelect: |-
-            =Set(varResults, APIScubaGearAnalyzer.FetchBlob(txtStorageAccount.Text, txtContainer.Text, txtSasToken.Text, galBlobs.Selected.name));
+            =Set(varResults, APIScubaGearAnalyzer.FetchBlob(txtStorageAccount.Text, txtContainer.Text, If(varUseManagedIdentity, Blank(), txtSasToken.Text), galBlobs.Selected.name));
             ClearCollect(colProducts, varResults.productBreakdown);
             ClearCollect(colControls, varResults.controls);
             Set(varChatContext, varResults.chatContext);
+            Set(varExclusionContext, varResults.exclusionContext);
             Set(varIsLoaded, true)
 
     rectCardTotal As rectangle:
@@ -468,6 +493,7 @@ scrUpload As screen:
             =Set(varIsLoaded, false);
             Set(varResults, Blank());
             Set(varChatContext, Blank());
+            Set(varExclusionContext, Blank());
             Clear(colProducts);
             Clear(colControls);
             Clear(colChatHistory);

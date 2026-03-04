@@ -8,7 +8,7 @@
       "name": "ScubaGear Analyzer"
     }
   },
-  "host": "<your-function-app>.azurewebsites.net",
+  "host": "scubagear-func-dl45mgigo2pcw.azurewebsites.net",
   "basePath": "/api",
   "schemes": ["https"],
   "consumes": ["application/json"],
@@ -284,27 +284,10 @@
             "name": "body",
             "in": "body",
             "required": true,
-            "description": "Chat request with message, optional assessmentContext, and optional controlDetails array for per-control AI analysis",
+            "description": "Chat request JSON containing message, assessmentContext, controlDetails, and exclusionContext",
             "schema": {
               "type": "object",
-              "required": ["message"],
-              "properties": {
-                "message": { "type": "string", "description": "The user's chat message" },
-                "assessmentContext": { "type": "string", "description": "Pre-built assessment context string from parse-results" },
-                "controlDetails": {
-                  "type": "array",
-                  "description": "Full control data from the parsed ScubaGear results, used for AI per-control analysis",
-                  "items": {
-                    "type": "object",
-                    "properties": {
-                      "controlId": { "type": "string" },
-                      "status": { "type": "string" },
-                      "reportDetails": { "type": "string" },
-                      "actualValue": { "type": "string", "description": "Stringified JSON of the actual tenant configuration value evaluated by ScubaGear Rego policy" }
-                    }
-                  }
-                }
-              }
+              "description": "Raw chat request JSON object"
             }
           }
         ],
@@ -347,7 +330,7 @@
             "in": "query",
             "required": true,
             "type": "string",
-            "description": "Shared Access Signature (SAS) token for container access"
+            "description": "SAS token for container access, or empty string to use Managed Identity."
           },
           {
             "name": "prefix",
@@ -363,7 +346,7 @@
             "schema": { "$ref": "#/definitions/BlobListResponse" }
           },
           "400": { "description": "Missing required parameters" },
-          "403": { "description": "SAS token invalid or expired" },
+          "403": { "description": "SAS token invalid/expired or Managed Identity not authorized" },
           "404": { "description": "Container not found" }
         }
       }
@@ -385,7 +368,7 @@
               "properties": {
                 "storageAccountName": { "type": "string", "description": "Azure Storage account name" },
                 "containerName": { "type": "string", "description": "Blob container name" },
-                "sasToken": { "type": "string", "description": "Shared Access Signature (SAS) token" },
+                "sasToken": { "type": "string", "description": "SAS token, or empty string to use Managed Identity." },
                 "blobName": { "type": "string", "description": "Full blob name/path (e.g. '2026/02/27/ScubaResults.json')" }
               }
             }
@@ -397,7 +380,7 @@
             "schema": { "$ref": "#/definitions/ParsedResults" }
           },
           "400": { "description": "Missing fields or unparseable JSON" },
-          "403": { "description": "SAS token invalid or expired" },
+          "403": { "description": "SAS token invalid/expired or Managed Identity not authorized" },
           "404": { "description": "Blob not found" }
         }
       }
@@ -548,11 +531,17 @@
               "requirementMet": { "type": "boolean" },
               "isOmitted": { "type": "boolean" },
               "isIncorrectResult": { "type": "boolean" },
-              "actualValue": { "type": "string", "description": "Stringified JSON of the actual tenant config evaluated by Rego (TestResults format only)" }
+              "actualValue": { "type": "string", "description": "Stringified JSON of the actual tenant config evaluated by Rego (TestResults format only)" },
+              "hasExclusions": { "type": "boolean", "description": "True if this control has any exclusion configuration (approved exclusions, annotations, omissions, or unapproved CAP exclusions)" },
+              "exclusionNote": { "type": "string", "description": "Human-readable exclusion summary for this control (empty string if no exclusions)" }
             }
           }
         },
-        "chatContext": { "type": "string", "description": "Pre-built context string to pass to the /chat endpoint" }
+        "chatContext": { "type": "string", "description": "Pre-built context string to pass to the /chat endpoint" },
+        "exclusionContext": {
+          "type": "string",
+          "description": "JSON-stringified exclusion configuration from the Raw JSON section. Pass directly to /chat as exclusionContext for AI exclusion analysis."
+        }
       }
     }
   },
