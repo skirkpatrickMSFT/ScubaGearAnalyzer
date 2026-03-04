@@ -52,14 +52,14 @@ Power Apps / Copilot Studio
 
 | Function | Method | Route | Description |
 |----------|--------|-------|-------------|
-| **storage-listBlobs** | GET | `/api/storage/list-blobs?storageAccountName=...&containerName=...&sasToken=...&prefix=` | Lists `.json` files in an Azure Blob Storage container (e.g. ScubaConnect output). Sorted newest-first. Requires a SAS token with List + Read permissions. Optional `prefix` filter. |
-| **storage-fetchBlob** | POST | `/api/storage/fetch-blob` | Downloads a specific blob from storage, parses it through the same pipeline as `parse-results`, and returns the full structured result. Body: `{ storageAccountName, containerName, sasToken, blobName }`. |
+| **storage-listBlobs** | GET | `/api/storage/list-blobs?storageAccountName=...&containerName=...&sasToken=...&prefix=` | Lists `.json` files in an Azure Blob Storage container (e.g. ScubaConnect output). Sorted newest-first. Supports **SAS token** or **Managed Identity** auth — pass an empty `sasToken` to use MI. Optional `prefix` filter. |
+| **storage-fetchBlob** | POST | `/api/storage/fetch-blob` | Downloads a specific blob from storage, parses it through the same pipeline as `parse-results`, and returns the full structured result. Body: `{ storageAccountName, containerName, sasToken, blobName }`. Pass empty `sasToken` for Managed Identity. |
 
 ## Shared Modules
 
 | Module | Description |
 |--------|-------------|
-| `shared/scubagear-parser.ts` | Detects ScubaGear format (TestResults pre-1.5 vs ScubaResults 1.5–1.7), extracts controls, computes summaries, and builds chat context. Handles Omitted, IncorrectResult, Comments, and ResolutionDate fields. |
+| `shared/scubagear-parser.ts` | Detects ScubaGear format (TestResults pre-1.5 vs ScubaResults 1.5–1.7+), extracts controls, computes summaries, builds chat context, rewrites baseline URLs to current version, and performs **Conditional Access Policy exclusion analysis** — classifies policies by category (MFA, phishing-resistant MFA, block legacy auth, etc.), identifies approved vs unapproved exclusions, and generates per-control notes with user/group counts. Handles Omitted, IncorrectResult, Comments, and ResolutionDate fields. |
 | `shared/baseline-data.ts` | Static CISA ScubaGear AAD baseline data — all controls, sections 1–8, highly privileged roles list. Provides lookup, search, and filtering functions. |
 | `shared/learn-fetcher.ts` | Microsoft Learn integration — search, article fetching, and control-to-URL mapping. |
 | `shared/types.ts` | TypeScript type definitions shared across functions. |
@@ -70,11 +70,25 @@ All functions use **function-level** auth (`authLevel: 'function'`). Requests
 must include the function host key as a `code` query parameter or `x-functions-key`
 header.
 
+### Storage Authentication
+
+The storage functions (`list-blobs`, `fetch-blob`) support two auth modes:
+
+| Mode | How | Setup |
+|------|-----|-------|
+| **SAS Token** | Pass a valid SAS token in the `sasToken` parameter | Generate a SAS with `rl` (read + list) permissions on the container |
+| **Managed Identity** | Pass an empty string for `sasToken` | Assign **Storage Blob Data Reader** RBAC role to the function app's system-assigned identity |
+
+The function app's system-assigned Managed Identity is enabled automatically
+by the Bicep template. See the [Deployment Guide](../DEPLOYMENT-GUIDE.md)
+for RBAC setup instructions.
+
 ## Environment Variables
 
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `OPENAI_API_KEY` | Yes (for chat) | OpenAI API key for GPT-4o. Only needed by the `chat` function. |
+| `SCUBAGEAR_CURRENT_VERSION` | No | Override the ScubaGear version used in baseline URLs (default: `1.7.1` from `scubagear-parser.ts`). |
 
 ## Local Development
 

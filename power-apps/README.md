@@ -11,10 +11,13 @@ Two ways to get the app running:
 
 ## OPTION A: Import the Pre-built App Package
 
-The file **`ScubaGearAnalyzer_20260228142611.zip`** in this folder is a Power Apps
+The file **`ScubaGearAnalyzer_<date>.zip`** in this folder is a Power Apps
 exported package that contains the complete canvas app. It does **not** contain
 any secrets, API keys, connection strings, or personal data — it is safe to
 distribute.
+
+> **Tip:** Check the `power-apps/` folder for the latest `.zip` export.
+> The file is named with the export date (e.g., `ScubaGearAnalyzer_20260304.zip`).
 
 ### Prerequisites
 
@@ -29,7 +32,7 @@ Before importing you need:
 2. Select the **environment** you want to deploy into (top-right switcher)
 3. In the left nav click **Apps** → **Import canvas app** (top bar)
    - If you don't see "Import canvas app", click **⋯ Command bar** → **Import package**
-4. Click **Upload** and select `ScubaGearAnalyzer_20260228142611.zip`
+4. Click **Upload** and select the latest `ScubaGearAnalyzer_<date>.zip`
 5. Power Apps will show the package contents:
 
    | Resource | Type | Action |
@@ -727,8 +730,36 @@ Before adding storage controls, you need to update your Custom Connector to incl
 2. **Insert** → **Text input** → **X**: `170`, **Y**: `120`, **Width**: `300`, **HintText**: `"e.g. scubaconnectstorage"`, **Default**: `varStorageAccountName`, **Visible**: `varUploadMode = "storage"` → Rename `txtStorageAccount`
 3. **Insert** → **Text label** → `"Container Name:"`, **X**: `20`, **Y**: `158` → same Visible → Rename `lblContainer`
 4. **Insert** → **Text input** → **X**: `170`, **Y**: `158`, **Width**: `300`, **HintText**: `"e.g. scubagear-output"`, **Default**: `varContainerName` → Rename `txtContainer`
-5. **Insert** → **Text label** → `"SAS Token:"`, **X**: `20`, **Y**: `196` → Rename `lblSasToken`
-6. **Insert** → **Text input** → **X**: `170`, **Y**: `196`, **Width**: `510`, **HintText**: `"?sv=2023-01-03&ss=b&srt=co&sp=rl&se=..."`, **Default**: `varSasToken` → Rename `txtSasToken`
+5. **Insert** → **Text label** → `"SAS Token:"`, **X**: `20`, **Y**: `196`, **Visible**: `varUploadMode = "storage" && !tglAuthMethod.Value` → Rename `lblSasToken`
+6. **Insert** → **Text input** → **X**: `170`, **Y**: `196`, **Width**: `510`, **HintText**: `"?sv=2023-01-03&ss=b&srt=co&sp=rl&se=..."`, **Default**: `varSasToken`, **Visible**: `varUploadMode = "storage" && !tglAuthMethod.Value` → Rename `txtSasToken`
+
+### Step E.1 — Add the Managed Identity Toggle
+
+1. **Insert** → search **Toggle** → click to add. Set properties:
+   - **X**: `20`, **Y**: `196`
+   - **Width**: `80`, **Height**: `32`
+   - **Default**: `false`
+   - **Visible**: `varUploadMode = "storage"`
+   - Rename to `tglAuthMethod`
+
+2. **Insert** → **Text label** → set properties:
+   - **Text**: `"Use Managed Identity"`
+   - **X**: `110`, **Y**: `196`, **Width**: `200`, **Height**: `32`
+   - **Size**: `11`
+   - **Visible**: `varUploadMode = "storage"`
+   - Rename to `lblToggleMI`
+
+3. **Insert** → **Text label** → set properties:
+   - **Text**: `If(tglAuthMethod.Value, "✅ Using Managed Identity", "")`
+   - **X**: `320`, **Y**: `196`, **Width**: `360`, **Height**: `32`
+   - **Size**: `11`, **Color**: `RGBA(16, 124, 16, 1)`
+   - **Visible**: `varUploadMode = "storage"`
+   - Rename to `lblAuthMethod`
+
+> **How it works:** When the toggle is ON, the storage API calls pass an empty
+> `sasToken`, which tells the backend to use its system-assigned Managed Identity.
+> The SAS Token field is hidden when MI is enabled. This requires the function
+> app to have **Storage Blob Data Reader** RBAC on the target storage account.
 
 ### Step F — Add Save Settings Button
 
@@ -757,7 +788,7 @@ Notify("Storage settings saved", NotificationType.Success)
    - **Text**: `"Browse Files"`, **X**: `490`, **Y**: `240`, **Width**: `190`, **Height**: `36`
    - **OnSelect**:
 ```
-Set(varBlobResult, APIScubaGearAnalyzer.ListBlobs(txtStorageAccount.Text, txtContainer.Text, txtSasToken.Text));
+Set(varBlobResult, APIScubaGearAnalyzer.ListBlobs(txtStorageAccount.Text, txtContainer.Text, If(tglAuthMethod.Value, " ", txtSasToken.Text)));
 ClearCollect(colBlobs, varBlobResult.blobs)
 ```
    - Rename to `btnListBlobs`
@@ -782,7 +813,7 @@ ClearCollect(colBlobs, varBlobResult.blobs)
    - **Visible**: `varUploadMode = "storage" && CountRows(colBlobs) > 0`
    - **OnSelect**:
 ```
-Set(varResults, APIScubaGearAnalyzer.FetchBlob(txtStorageAccount.Text, txtContainer.Text, txtSasToken.Text, galBlobs.Selected.name));
+Set(varResults, APIScubaGearAnalyzer.FetchBlob(txtStorageAccount.Text, txtContainer.Text, If(tglAuthMethod.Value, " ", txtSasToken.Text), galBlobs.Selected.name & ""));
 ClearCollect(colProducts, varResults.productBreakdown);
 ClearCollect(colControls, varResults.controls);
 Set(varChatContext, varResults.chatContext);
@@ -833,7 +864,8 @@ Set(varIsLoaded, true)
 | Gallery shows "No items" | Make sure you clicked **Analyse Results** first. The collections are empty until you parse JSON. |
 | Remediation returns blank | The control ID may not be in the baseline data. Try MS.AAD.1.1v1 first. |
 | Chat returns error | Check that the OPENAI_API_KEY is set on your Azure Function App. |
-| Storage "Access denied" | SAS token may be expired or missing List+Read permissions. Generate a new SAS token with `rl` (read + list) permissions on the blob container. |
+| Storage "Access denied" | SAS token may be expired or missing List+Read permissions. Generate a new SAS token with `rl` (read + list) permissions on the blob container. Or switch to Managed Identity mode. |
+| Storage "Server failed to authenticate" (MI mode) | The function app’s Managed Identity doesn't have **Storage Blob Data Reader** on the target storage account. See [DEPLOYMENT-GUIDE.md](../DEPLOYMENT-GUIDE.md) Phase 3 → Storage authentication. |
 | Storage "Container not found" | Verify the storage account name and container name are spelled correctly. |
 | Browse Files returns 0 results | The prefix filter may be too restrictive, or the container has no `.json` files. Try leaving the prefix blank. |
 | varResults.summary.pass shows error | Wrap in `If(varIsLoaded, ..., "—")` to handle the unloaded state. |

@@ -2,15 +2,15 @@
 
 Analyze CISA ScubaGear assessment results with an interactive Power Apps dashboard and AI-powered remediation chat. Upload your `TestResults.json` from a ScubaGear run — or load results directly from Azure Blob Storage (e.g. a ScubaConnect output container) — and get compliance insights grounded in CISA baselines and Microsoft Learn documentation.
 
-Supports **ScubaGear 1.5–1.7** output formats, including omitted controls, exemptions, incorrect-result overrides, and per-control comments.
+Supports **ScubaGear 1.5–1.7.1** output formats, including omitted controls, exemptions, incorrect-result overrides, per-control comments, and **Conditional Access Policy exclusion analysis** with per-policy user/group breakdown.
 
 ## What's Included
 
 | Component | Description |
 |-----------|-------------|
 | `azure-functions/` | TypeScript Azure Functions backend — JSON parsing, baseline lookups, Learn docs, storage integration, GPT-4o chat (12 endpoints) |
-| `infra/` | Bicep deployment template (`functions.bicep`) |
-| `power-apps/` | Power Apps canvas app build guide + source files |
+| `infra/` | Bicep deployment templates (`functions.bicep`, `external-storage-rbac.bicep`) |
+| `power-apps/` | Power Apps canvas app — pre-built `.msapp` export + step-by-step build guide + source files |
 | `copilot-studio/` | Copilot Studio agent definition *(optional — alternative chat interface)* |
 | `deploy-functions.ps1` | One-click Azure Functions deployment script |
 | `DEPLOYMENT-GUIDE.md` | End-to-end deployment walkthrough |
@@ -39,8 +39,8 @@ Supports **ScubaGear 1.5–1.7** output formats, including omitted controls, exe
 │  /api/storage/list-blobs — Browse blob storage  │
 │  /api/storage/fetch-blob — Load blob & parse    │
 │  /api/chat               — GPT-4o AI chat       │
-└──────────────────┬──────────────────────────────┘
-                   │ SAS Token
+└──────────────────┬──────────────────────────────────┘
+                   │ SAS Token  — or —  Managed Identity
 ┌──────────────────▼──────────────────────────────┐
 │        Azure Blob Storage (ScubaConnect)         │
 │  scubagear-output / yyyy/MM/dd/ScubaResults.json│
@@ -129,7 +129,24 @@ The app accepts both ScubaGear output formats:
 { "Results": { "AAD": [{ "GroupName": "...", "Controls": [...] }], ... } }
 ```
 
-ScubaGear 1.7 fields supported: `Omitted` status, `OmittedEvaluationResult`, `IncorrectResult`, `OriginalResult`, `Comments`, `ResolutionDate`.
+ScubaGear 1.7+ fields supported: `Omitted` status, `OmittedEvaluationResult`, `IncorrectResult`, `OriginalResult`, `Comments`, `ResolutionDate`.
+
+## Key Features
+
+- **Conditional Access Policy Exclusion Analysis** — For `MS.AAD.3.x` controls, the parser inspects
+  `ActualValue` JSON to extract excluded users and groups from each Conditional Access policy,
+  classifies policies by purpose (MFA, phishing-resistant MFA, block legacy auth, etc.), and
+  generates per-control exclusion notes showing approved vs. unapproved exclusions with user/group
+  counts (e.g., `⚠️ Unapproved exclusions: Enforce MFA [2 user(s), 1 group(s)]`).
+- **Managed Identity Storage Auth** — Storage endpoints support both SAS token and Azure Managed
+  Identity authentication. A toggle in the Power App lets users switch between modes. When
+  Managed Identity is enabled, the function app uses its system-assigned identity with RBAC
+  (Storage Blob Data Reader) — no SAS token needed.
+- **Baseline URL Version Rewriting** — ScubaGear embeds GitHub URLs pointing to the version that
+  generated the report. The parser rewrites these to the current version (`v1.7.1`) so links
+  always point to the latest baseline documentation.
+- **GPT-4o Compliance Chat** — Context-aware AI assistant with function-calling that can look up
+  controls, fetch remediation steps, search Microsoft Learn, and analyze Rego policy logic.
 
 ## API Endpoints
 

@@ -20,6 +20,8 @@ power-apps/ScubaGearAnalyzer.msapp
 # Package output
 release/
 *.zip
+# Exception: keep Power App export packages for distribution
+!power-apps/*.zip
 
 # Environment secrets
 .env

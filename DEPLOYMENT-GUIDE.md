@@ -156,10 +156,23 @@ The Custom Connector bridges Power Platform to your Azure Functions.
 
 ---
 
-## Phase 5: Build the Power Apps Canvas App
+## Phase 5: Deploy the Power Apps Canvas App
 
-The canvas app gives your team an interactive dashboard for uploading ScubaGear
-results, viewing compliance status, and chatting with the AI assistant.
+Two options:
+
+### Option A — Import the Pre-built App (Fastest)
+
+1. In [Power Apps](https://make.powerapps.com) → **Apps** → **Import canvas app**
+2. Upload `power-apps/ScubaGearAnalyzer_<date>.zip`
+3. Set import action to **Create as new**
+4. Click **Import**
+5. Open the imported app in **Edit** mode → **Data** panel → **+ Add data** → select your **APIScubaGearAnalyzer** connector
+6. If prompted, enter your API key (Host Key from Phase 3)
+7. Save and publish
+
+See [power-apps/README.md](power-apps/README.md) for detailed import instructions.
+
+### Option B — Build from Scratch
 
 Follow the complete build guide:
 
@@ -171,7 +184,7 @@ Follow the complete build guide:
 
 | Screen | Purpose |
 |--------|---------|
-| **Upload** | Paste a `TestResults.json` or load from Azure Blob Storage, view pass/fail summary |
+| **Upload** | Paste JSON, load from Blob Storage, toggle Managed Identity vs SAS Token auth |
 | **Controls** | Browse and filter individual control results by product |
 | **Chat** | Ask the AI assistant questions about failures, remediation, and baselines |
 
@@ -213,8 +226,9 @@ Run through these checks to confirm everything is working:
 | 5 | Ask: *"What is MS.AAD.3.1v1?"* | AI responds with control details |
 | 6 | Ask: *"How do I remediate MS.EXO.4.1v1?"* | AI responds with remediation steps and admin portal paths |
 | 7 | Switch to Storage mode and enter storage details | Browse Files returns JSON blobs from the container |
-| 8 | Select a blob and click Load Selected | Results are parsed and displayed the same as pasted JSON |
-| 9 | (If Copilot Studio) Test the agent in the Test pane | Agent calls connector actions and returns grounded answers |
+| 8 | Toggle "Use Managed Identity" and click Browse Files | Blobs listed without a SAS token (requires RBAC setup from Phase 3) |
+| 9 | Select a blob and click Load Selected | Results are parsed and displayed the same as pasted JSON |
+| 10 | (If Copilot Studio) Test the agent in the Test pane | Agent calls connector actions and returns grounded answers |
 
 ---
 

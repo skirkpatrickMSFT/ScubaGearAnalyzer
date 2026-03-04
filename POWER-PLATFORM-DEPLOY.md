@@ -88,14 +88,21 @@ Summary:
 
 ### 4. Build Power Apps Dashboard
 
-Create a Canvas App with:
-- **Paste JSON or load from Azure Blob Storage** — dual-mode upload
+**Option A — Import the pre-built app** (fastest): Import the `.zip` file from `power-apps/` and add the connector. See [power-apps/README.md](power-apps/README.md) Option A.
+
+**Option B — Build from scratch**: Create a Canvas App with:
+- **Paste JSON or load from Azure Blob Storage** — dual-mode upload with **Managed Identity toggle**
 - **Summary cards** showing pass/fail/manual/omitted counts
 - **Product gallery** with per-product pass rates
-- **Controls table** with status filtering
+- **Controls table** with status filtering and **exclusion analysis notes** for CAP controls
 - **AI chat screen** calling the `/api/chat` endpoint directly (or optionally embedding a Copilot Studio agent)
 
-Supports ScubaGear 1.5–1.7 output, including omitted controls and exemptions.
+The upload screen includes a **Use Managed Identity** toggle. When enabled, storage
+calls skip SAS tokens and use the function app’s system-assigned identity instead.
+This requires the RBAC role assignment described in the deployment guide.
+
+Supports ScubaGear 1.5–1.7.1 output, including omitted controls, exemptions, and
+Conditional Access Policy exclusion analysis.
 
 ## API Endpoints
 
