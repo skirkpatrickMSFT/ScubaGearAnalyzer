@@ -4,6 +4,8 @@ Analyze CISA ScubaGear assessment results with an interactive Power Apps dashboa
 
 Supports **ScubaGear 1.5–1.7.1** output formats, including omitted controls, exemptions, incorrect-result overrides, per-control comments, and **Conditional Access Policy exclusion analysis** with per-policy user/group breakdown.
 
+[![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2FskirkpatrickMSFT%2FScubaGearAnalyzer%2Fmain%2Fazuredeploy.json)
+
 ## What's Included
 
 | Component | Description |
@@ -19,12 +21,12 @@ Supports **ScubaGear 1.5–1.7.1** output formats, including omitted controls, e
 
 ```
 ┌─────────────────────────────────────────────────┐
-│              Power Platform                      │
+│              Power Platform                     │
 │  ┌──────────────┐    ┌────────────────────┐     │
-│  │  Power Apps   │    │  Copilot Studio    │     │
-│  │  Canvas App   │    │  Agent (optional)  │     │
+│  │  Power Apps  │    │  Copilot Studio    │     │
+│  │  Canvas App  │    │  Agent (optional)  │     │
 │  └──────┬───────┘    └────────┬───────────┘     │
-│         └──────┬──────────────┘                  │
+│         └──────┬──────────────┘                 │
 │     ┌──────────▼──────────┐                     │
 │     │  Custom Connector   │                     │
 │     │ (APIScubaGearAnalyzer)                    │
@@ -32,17 +34,17 @@ Supports **ScubaGear 1.5–1.7.1** output formats, including omitted controls, e
 └────────────────┼────────────────────────────────┘
                  │ HTTPS + API Key
 ┌────────────────▼────────────────────────────────┐
-│           Azure Functions (Flex Consumption)     │
+│          Azure Functions (Flex Consumption)     │
 │  /api/parse-results      — ScubaGear JSON parser│
 │  /api/baseline/*         — CISA baseline data   │
 │  /api/learn/*            — Microsoft Learn proxy│
 │  /api/storage/list-blobs — Browse blob storage  │
 │  /api/storage/fetch-blob — Load blob & parse    │
 │  /api/chat               — GPT-4o AI chat       │
-└──────────────────┬──────────────────────────────────┘
+└──────────────────┬──────────────────────────────┘
                    │ SAS Token  — or —  Managed Identity
 ┌──────────────────▼──────────────────────────────┐
-│        Azure Blob Storage (ScubaConnect)         │
+│        Azure Blob Storage (ScubaConnect)        │
 │  scubagear-output / yyyy/MM/dd/ScubaResults.json│
 └─────────────────────────────────────────────────┘
 ```
@@ -55,7 +57,30 @@ Supports **ScubaGear 1.5–1.7.1** output formats, including omitted controls, e
 - **OpenAI API key** (GPT-4o)
 - **Power Platform environment** (for Power Apps; Copilot Studio is optional)
 
-## Quick Start — Power Apps Deployment
+## Quick Start
+
+Two deployment paths:
+
+### Path A — One-Click Deploy to Azure (Recommended)
+
+1. Click the **Deploy to Azure** button above
+2. Fill in the parameters:
+   - **Resource group**: create new or use existing
+   - **OpenAI API Key**: your GPT-4o key
+   - Leave other defaults as-is
+3. Click **Review + create** → **Create**
+4. After deployment completes (~3 minutes), go to **Outputs** to get your Function App name and URL
+5. Deploy the function code using GitHub Actions:
+   - Go to the repo’s **Actions** tab → **Build & Deploy Functions** → **Run workflow**
+   - Enter your Function App name
+   - Or run locally: `cd azure-functions && npm ci && npm run build && func azure functionapp publish <your-func-app> --javascript`
+6. **Import the Power App**: Go to [Power Apps](https://make.powerapps.com) → **Apps** → **Import canvas app** → upload the `.zip` from `power-apps/`
+7. **Create the Custom Connector**: Import `azure-functions/openapi.json`, set the host and API key
+8. Open the app, add the connector as a data source, and publish
+
+For full details, see **[DEPLOYMENT-GUIDE.md](DEPLOYMENT-GUIDE.md)**.
+
+### Path B — PowerShell Script
 
 For a complete end-to-end walkthrough, see **[DEPLOYMENT-GUIDE.md](DEPLOYMENT-GUIDE.md)**.
 

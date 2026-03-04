@@ -1,8 +1,76 @@
 # ScubaGear Analyzer — Deployment Guide
 
-A step-by-step guide to deploy the ScubaGear Analyzer from scratch. Follow each
-phase in order. Detailed instructions for specific components are linked where
-applicable.
+A step-by-step guide to deploy the ScubaGear Analyzer from scratch. Two paths
+are available — choose whichever suits your organization.
+
+| Path | Best for | Time |
+|------|----------|------|
+| **[One-Click Deploy](#one-click-deploy-to-azure)** | Quick setup, minimal tooling | ~10 min |
+| **[Full Manual Deploy](#phase-1-prerequisites)** | Full control, CI/CD, customization | ~30 min |
+
+---
+
+## One-Click Deploy to Azure
+
+Use the **Deploy to Azure** button to create all infrastructure through the Azure Portal, then deploy the function code and import the Power App.
+
+[![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2FskirkpatrickMSFT%2FScubaGearAnalyzer%2Fmain%2Fazuredeploy.json)
+
+### Step 1 — Deploy Infrastructure
+
+1. Click the button above (or paste the link into your browser)
+2. Sign in to the Azure Portal if prompted
+3. Fill in the form:
+   - **Subscription**: select your Azure subscription
+   - **Resource group**: click **Create new** → name it (e.g., `rg-scubagear`)
+   - **Region**: select your preferred region
+   - **OpenAI API Key**: paste your GPT-4o key
+   - Leave other fields at their defaults
+4. Click **Review + create** → **Create**
+5. Wait for deployment (~2–3 minutes)
+6. When complete, click **Outputs** to copy:
+   - `functionAppName` — e.g., `scubagear-func-abc123xyz`
+   - `functionAppUrl` — e.g., `https://scubagear-func-abc123xyz.azurewebsites.net`
+
+### Step 2 — Deploy Function Code
+
+The ARM template creates the infrastructure but **not** the function code. Choose one method:
+
+**Option A — GitHub Actions (recommended for teams)**
+
+1. Fork this repository to your organization's GitHub
+2. Go to **Settings** → **Secrets and variables** → **Actions**
+3. Add a **Repository variable** named `AZURE_FUNCTIONAPP_NAME` with the value from Step 1
+4. Add a **Repository secret** named `AZURE_FUNCTIONAPP_PUBLISH_PROFILE`:
+   - In the Azure Portal, go to your Function App → **Overview** → **Get publish profile**
+   - Copy the entire XML content and paste as the secret value
+5. Go to **Actions** → **Build & Deploy Functions** → **Run workflow** → Click **Run workflow**
+
+**Option B — Local deploy (quickest for one person)**
+
+```powershell
+git clone https://github.com/skirkpatrickMSFT/ScubaGearAnalyzer.git
+cd ScubaGearAnalyzer/azure-functions
+npm ci
+npm run build
+func azure functionapp publish <your-function-app-name> --javascript
+```
+
+### Step 3 — Get Your Host Key
+
+```powershell
+az functionapp keys list --name <your-function-app-name> --resource-group <your-rg> --query "functionKeys.default" -o tsv
+```
+
+Save this key — you'll need it for the Custom Connector.
+
+### Step 4 — Continue with Power Platform Setup
+
+Jump to **[Phase 4: Create the Custom Connector](#phase-4-create-the-custom-connector)** below, then import the Power App from `power-apps/`.
+
+---
+
+## Full Manual Deploy (Phase-by-Phase)
 
 ---
 
@@ -251,11 +319,15 @@ manually from their respective admin portals.
 | What | Where |
 |------|-------|
 | Project overview | [README.md](README.md) |
+| **Deploy to Azure (one-click)** | [azuredeploy.json](azuredeploy.json) |
+| **GitHub Actions workflow** | [.github/workflows/deploy.yml](.github/workflows/deploy.yml) |
 | Custom Connector details | [POWER-PLATFORM-DEPLOY.md](POWER-PLATFORM-DEPLOY.md) |
 | Canvas app build guide | [power-apps/README.md](power-apps/README.md) |
+| **Power App export (.zip)** | [power-apps/](power-apps/) |
 | Copilot Studio setup (optional) | [copilot-studio/README.md](copilot-studio/README.md) |
 | API endpoint reference | [README.md → API Endpoints](README.md) |
 | Azure Functions deployment | [deploy-functions.ps1](deploy-functions.ps1) |
-| Infrastructure template | [infra/functions.bicep](infra/functions.bicep) |
+| Infrastructure template (Bicep) | [infra/functions.bicep](infra/functions.bicep) |
+| Infrastructure template (ARM) | [azuredeploy.json](azuredeploy.json) |
 | OpenAPI spec | [azure-functions/openapi.json](azure-functions/openapi.json) |
 | Sample test data | [test-subset.json](test-subset.json) |
