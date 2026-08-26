@@ -8,7 +8,7 @@
       "name": "ScubaGear Analyzer"
     }
   },
-  "host": "scubagear-func-dl45mgigo2pcw.azurewebsites.net",
+  "host": "<your-function-app>.azurewebsites.net",
   "basePath": "/api",
   "schemes": ["https"],
   "consumes": ["application/json"],
@@ -42,14 +42,21 @@
       "get": {
         "operationId": "ListControls",
         "summary": "List baseline controls",
-        "description": "Lists all CISA ScubaGear AAD baseline controls. Optionally filtered by section number.",
+        "description": "Lists CISA ScubaGear baseline controls. Optionally filtered by product and/or section number.",
         "parameters": [
           {
             "name": "section",
             "in": "query",
             "required": false,
             "type": "integer",
-            "description": "Section number (1-8) to filter by"
+            "description": "Section number to filter by. Section numbering is per product (for example Exchange Online reaches 17)."
+          },
+          {
+            "name": "product",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "description": "Product key to filter by, e.g. AAD, EXO, DEFENDER, SECURITYSUITE, SHAREPOINT, TEAMS, POWERPLATFORM, POWERBI. Renamed products resolve automatically."
           }
         ],
         "responses": {
@@ -129,14 +136,21 @@
       "get": {
         "operationId": "GetSectionSummary",
         "summary": "Get section summary",
-        "description": "Returns a summary of all controls in a specific baseline section (1-8).",
+        "description": "Returns a summary of all controls in a baseline section. Section numbering is per product, so pass product to disambiguate.",
         "parameters": [
           {
             "name": "number",
             "in": "query",
             "required": true,
             "type": "integer",
-            "description": "Section number (1-8)"
+            "description": "Section number"
+          },
+          {
+            "name": "product",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "description": "Product key the section belongs to, e.g. AAD, EXO, TEAMS. Without it the first product defining that section number is used."
           }
         ],
         "responses": {

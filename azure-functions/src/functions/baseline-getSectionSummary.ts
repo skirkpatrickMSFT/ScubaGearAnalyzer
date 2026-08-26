@@ -8,7 +8,7 @@
 
 import { app, HttpRequest, HttpResponseInit, InvocationContext } from '@azure/functions';
 import {
-  AAD_SECTIONS,
+  getSectionName,
   HIGHLY_PRIVILEGED_ROLES,
   getControlsBySection,
 } from '../shared/baseline-data.js';
@@ -19,18 +19,19 @@ app.http('baseline-getSectionSummary', {
   route: 'baseline/section',
   handler: async (request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> => {
     const numParam = request.query.get('number');
+    const productParam = request.query.get('product') ?? undefined;
 
     if (!numParam) {
-      return { status: 400, jsonBody: { error: 'number query parameter is required (1-8)' } };
+      return { status: 400, jsonBody: { error: 'number query parameter is required' } };
     }
 
     const sectionNumber = parseInt(numParam, 10);
-    if (isNaN(sectionNumber) || sectionNumber < 1 || sectionNumber > 8) {
-      return { status: 400, jsonBody: { error: 'Section number must be between 1 and 8' } };
+    if (isNaN(sectionNumber) || sectionNumber < 1) {
+      return { status: 400, jsonBody: { error: 'Section number must be a positive number' } };
     }
 
-    const sectionName = AAD_SECTIONS[sectionNumber];
-    const controls = getControlsBySection(sectionNumber);
+    const sectionName = getSectionName(sectionNumber, productParam);
+    const controls = getControlsBySection(sectionNumber, productParam);
 
     const shallCount = controls.filter(
       (c) => c.criticality === 'SHALL' || c.criticality === 'SHALL NOT'

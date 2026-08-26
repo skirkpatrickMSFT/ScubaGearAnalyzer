@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Tears down the ScubaGear Analyzer Azure deployment.
 

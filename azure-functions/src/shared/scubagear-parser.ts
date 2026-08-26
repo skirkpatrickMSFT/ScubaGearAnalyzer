@@ -15,6 +15,7 @@ import type {
   ScubaResultsGroup,
   ExclusionContext,
   ControlExclusionConfig,
+  PolicyVariableConfig,
   AnnotatePolicyConfig,
   OmitPolicyConfig,
   PrivilegedUser,
@@ -22,31 +23,26 @@ import type {
   CAPExclusionAnalysis,
   CAPCategory,
 } from './types.js';
+import {
+  PRODUCT_DISPLAY_NAMES,
+  SCUBAGEAR_BASELINE_VERSION,
+  canonicalizeProduct,
+} from './baseline-data.js';
 
-/** Map of product abbreviations to display names */
-export const PRODUCT_DISPLAY_NAMES: Record<ScubaProduct, string> = {
-  AAD: 'Microsoft Entra ID',
-  DEFENDER: 'Microsoft Defender',
-  EXO: 'Exchange Online',
-  SHAREPOINT: 'SharePoint Online',
-  TEAMS: 'Microsoft Teams',
-  POWERPLATFORM: 'Power Platform',
-  POWERBI: 'Power BI',
-};
+export { PRODUCT_DISPLAY_NAMES };
 
-/** Map ScubaResults product keys to our canonical product enum */
-const PRODUCT_KEY_MAP: Record<string, ScubaProduct> = {
-  AAD: 'AAD', DEFENDER: 'DEFENDER', EXO: 'EXO', SHAREPOINT: 'SHAREPOINT',
-  TEAMS: 'TEAMS', POWERPLATFORM: 'POWERPLATFORM', POWERBI: 'POWERBI',
-  Aad: 'AAD', Defender: 'DEFENDER', Exo: 'EXO', SharePoint: 'SHAREPOINT',
-  Teams: 'TEAMS', PowerPlatform: 'POWERPLATFORM', PowerBI: 'POWERBI',
-};
+/** scuba_config keys that hold policy overrides rather than product configuration. */
+const TOP_LEVEL_POLICY_KEYS = new Set(['AnnotatePolicy', 'OmitPolicy']);
+
+function strList(value: unknown): string[] {
+  return Array.isArray(value) ? value.map(String) : [];
+}
 
 export function extractProduct(policyId: string): ScubaProduct | null {
   if (!policyId) return null;
-  const match = policyId.match(/^MS\.([A-Z]+)\.\d+/);
+  const match = policyId.match(/^MS\.([A-Z0-9]+)\.\d+/);
   if (!match) return null;
-  return match[1] as ScubaProduct;
+  return canonicalizeProduct(match[1]);
 }
 
 export function extractSection(policyId: string): string {
@@ -71,8 +67,9 @@ function normaliseCriticality(raw: string): string {
   return base;
 }
 
-/** Current ScubaGear release tag used for baseline reference URLs */
-export const SCUBAGEAR_CURRENT_VERSION = '1.7.1';
+/** Release the bundled baselines were generated from; override for pre-release testing. */
+export const SCUBAGEAR_CURRENT_VERSION =
+  process.env.SCUBAGEAR_CURRENT_VERSION || SCUBAGEAR_BASELINE_VERSION;
 
 /** Rewrite outdated ScubaGear GitHub baseline URLs to the current release */
 function rewriteScubaGearUrls(text: string): string {
@@ -140,13 +137,16 @@ export function parseScubaResults(
 ): ParsedControl[] {
   const controls: ParsedControl[] = [];
   for (const [key, groups] of Object.entries(resultsObj)) {
-    const product = PRODUCT_KEY_MAP[key] || PRODUCT_KEY_MAP[key.toUpperCase()];
-    if (!product || !Array.isArray(groups)) continue;
+    if (!Array.isArray(groups)) continue;
+    const product = canonicalizeProduct(key);
+    if (!product) continue;
     for (const group of groups) {
       if (!group.Controls || !Array.isArray(group.Controls)) continue;
       for (const ctrl of group.Controls) {
         const controlId = ctrl['Control ID'];
         if (!controlId) continue;
+        // The Control ID is authoritative; the JSON group key can lag a rename.
+        const ctrlProduct = extractProduct(controlId) ?? product;
         const resultStr = ctrl.Result || '';
         const isOmitted = resultStr === 'Omitted';
         const isIncorrectResult = resultStr === 'Incorrect result' ||
@@ -161,7 +161,7 @@ export function parseScubaResults(
           comments.push(rawComments.trim());
         }
         controls.push({
-          controlId, product,
+          controlId, product: ctrlProduct,
           section: extractSection(controlId),
           status: deriveStatusFromResult(resultStr),
           criticality: normaliseCriticality(ctrl.Criticality),
@@ -283,23 +283,57 @@ export function extractExclusionContext(data: unknown): ExclusionContext | null 
 
   // 1. Extract approved exclusions from scuba_config per-product sections
   const approvedExclusions: ControlExclusionConfig[] = [];
+  const policyVariables: PolicyVariableConfig[] = [];
   if (scubaConfig) {
     for (const [key, value] of Object.entries(scubaConfig)) {
+      if (TOP_LEVEL_POLICY_KEYS.has(key)) continue;
       // Product-level keys like "Aad", "Defender", etc. contain per-control configs
       if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
         const productConfig = value as Record<string, unknown>;
         for (const [controlId, controlConfig] of Object.entries(productConfig)) {
           if (!controlId.startsWith('MS.')) continue;
+          if (typeof controlConfig !== 'object' || controlConfig === null) continue;
           const cc = controlConfig as Record<string, unknown>;
-          if (cc.CapExclusions) {
+
+          if (cc.CapExclusions && typeof cc.CapExclusions === 'object') {
             const ce = cc.CapExclusions as Record<string, unknown>;
             approvedExclusions.push({
               controlId,
               capExclusions: {
-                users: Array.isArray(ce.Users) ? ce.Users.map(String) : [],
-                groups: Array.isArray(ce.Groups) ? ce.Groups.map(String) : [],
+                users: strList(ce.Users),
+                groups: strList(ce.Groups),
+                applications: strList(ce.Applications),
+                guestUserTypes: strList(ce.GuestUserTypes),
               },
             });
+          }
+
+          if (cc.RoleExclusions && typeof cc.RoleExclusions === 'object') {
+            const re = cc.RoleExclusions as Record<string, unknown>;
+            const existing = approvedExclusions.find((e) => e.controlId === controlId);
+            const roleExclusions = { users: strList(re.Users), groups: strList(re.Groups) };
+            if (existing) existing.roleExclusions = roleExclusions;
+            else approvedExclusions.push({ controlId, roleExclusions });
+          }
+
+          // Anything else is a policy variable (SensitiveAccounts, AllowedForwardingDomains, ...).
+          const variables: PolicyVariableConfig['variables'] = {};
+          for (const [varName, varValue] of Object.entries(cc)) {
+            if (varName === 'CapExclusions' || varName === 'RoleExclusions') continue;
+            if (Array.isArray(varValue)) {
+              variables[varName] = varValue.map(String);
+            } else if (varValue && typeof varValue === 'object') {
+              const nested: Record<string, string[]> = {};
+              for (const [k, v] of Object.entries(varValue as Record<string, unknown>)) {
+                if (Array.isArray(v)) nested[k] = v.map(String);
+              }
+              if (Object.keys(nested).length > 0) variables[varName] = nested;
+            } else if (varValue != null) {
+              variables[varName] = [String(varValue)];
+            }
+          }
+          if (Object.keys(variables).length > 0) {
+            policyVariables.push({ controlId, product: key.toUpperCase(), variables });
           }
         }
       }
@@ -315,6 +349,7 @@ export function extractExclusionContext(data: unknown): ExclusionContext | null 
         controlId,
         incorrectResult: !!c.IncorrectResult,
         comment: String(c.Comment || ''),
+        remediationDate: c.RemediationDate != null ? String(c.RemediationDate) : undefined,
       });
     }
   }
@@ -396,6 +431,10 @@ export function extractExclusionContext(data: unknown): ExclusionContext | null 
       for (const u of exc.capExclusions.users) allApprovedUsers.add(u.toLowerCase());
       for (const g of exc.capExclusions.groups) allApprovedGroups.add(g.toLowerCase());
     }
+    if (exc.roleExclusions) {
+      for (const u of exc.roleExclusions.users) allApprovedUsers.add(u.toLowerCase());
+      for (const g of exc.roleExclusions.groups) allApprovedGroups.add(g.toLowerCase());
+    }
   }
 
   const exclusionAnalysis: CAPExclusionAnalysis[] = [];
@@ -435,6 +474,7 @@ export function extractExclusionContext(data: unknown): ExclusionContext | null 
 
   return {
     approvedExclusions,
+    policyVariables,
     annotatedPolicies,
     omittedPolicies,
     privilegedUsers,
@@ -453,25 +493,45 @@ export function getControlExclusionNote(controlId: string, ctx: ExclusionContext
 
   // Check if control has approved CAP exclusions
   const approved = ctx.approvedExclusions.find((e) => e.controlId === controlId);
-  if (approved && approved.capExclusions) {
-    const userCount = approved.capExclusions.users.length;
-    const groupCount = approved.capExclusions.groups.length;
+  if (approved) {
     const parts: string[] = [];
-    if (userCount > 0) parts.push(`${userCount} user(s)`);
-    if (groupCount > 0) parts.push(`${groupCount} group(s)`);
-    notes.push(`✅ Approved: ${parts.join(', ')}`);
+    if (approved.capExclusions) {
+      const ce = approved.capExclusions;
+      if (ce.users.length > 0) parts.push(`${ce.users.length} user(s)`);
+      if (ce.groups.length > 0) parts.push(`${ce.groups.length} group(s)`);
+      if (ce.applications.length > 0) parts.push(`${ce.applications.length} app(s)`);
+      if (ce.guestUserTypes.length > 0) parts.push(`${ce.guestUserTypes.length} guest type(s)`);
+    }
+    if (approved.roleExclusions) {
+      const re = approved.roleExclusions;
+      if (re.users.length > 0) parts.push(`${re.users.length} role user(s)`);
+      if (re.groups.length > 0) parts.push(`${re.groups.length} role group(s)`);
+    }
+    if (parts.length > 0) notes.push(`✅ Approved: ${parts.join(', ')}`);
+  }
+
+  // Policy-specific config variables (e.g. AllowedForwardingDomains)
+  const vars = ctx.policyVariables.find((v) => v.controlId === controlId);
+  if (vars) {
+    notes.push(`⚙️ Configured: ${Object.keys(vars.variables).join(', ')}`);
   }
 
   // Check if control is annotated (false positive)
   const annotated = ctx.annotatedPolicies.find((a) => a.controlId === controlId);
   if (annotated) {
-    notes.push(`📝 False positive`);
+    if (annotated.incorrectResult) {
+      notes.push('📝 Marked incorrect result');
+    } else if (annotated.remediationDate) {
+      notes.push(`📝 Remediation due ${annotated.remediationDate}`);
+    } else {
+      notes.push('📝 Annotated');
+    }
   }
 
   // Check if control is omitted
   const omitted = ctx.omittedPolicies.find((o) => o.controlId === controlId);
   if (omitted) {
-    notes.push(`⏭️ Omitted until ${omitted.expiration}`);
+    notes.push(omitted.expiration ? `⏭️ Omitted until ${omitted.expiration}` : '⏭️ Omitted');
   }
 
   // For AAD Section 3 (Conditional Access) controls, check relevant CAPs only
@@ -515,20 +575,59 @@ export function buildExclusionSummary(ctx: ExclusionContext): string {
 
   // Approved exclusions
   if (ctx.approvedExclusions.length > 0) {
-    lines.push('## Approved CAP Exclusions (from ScubaGear config)');
+    lines.push('## Approved Exclusions (from ScubaGear config)');
     for (const exc of ctx.approvedExclusions) {
       lines.push(`### ${exc.controlId}`);
       if (exc.capExclusions) {
-        if (exc.capExclusions.users.length > 0) {
+        const ce = exc.capExclusions;
+        if (ce.users.length > 0) {
           lines.push('**Approved excluded users:**');
-          for (const uid of exc.capExclusions.users) {
+          for (const uid of ce.users) {
             lines.push(`  - ${resolveUserName(uid, ctx.privilegedUsers)}`);
           }
         }
-        if (exc.capExclusions.groups.length > 0) {
+        if (ce.groups.length > 0) {
           lines.push('**Approved excluded groups:**');
-          for (const gid of exc.capExclusions.groups) {
+          for (const gid of ce.groups) {
             lines.push(`  - ${gid}`);
+          }
+        }
+        if (ce.applications.length > 0) {
+          lines.push(`**Approved excluded applications:** ${ce.applications.join(', ')}`);
+        }
+        if (ce.guestUserTypes.length > 0) {
+          lines.push(`**Approved excluded guest user types:** ${ce.guestUserTypes.join(', ')}`);
+        }
+      }
+      if (exc.roleExclusions) {
+        const re = exc.roleExclusions;
+        if (re.users.length > 0) {
+          lines.push('**Role-excluded users:**');
+          for (const uid of re.users) {
+            lines.push(`  - ${resolveUserName(uid, ctx.privilegedUsers)}`);
+          }
+        }
+        if (re.groups.length > 0) {
+          lines.push(`**Role-excluded groups:** ${re.groups.join(', ')}`);
+        }
+      }
+    }
+    lines.push('');
+  }
+
+  // Policy-specific configuration variables
+  if (ctx.policyVariables.length > 0) {
+    lines.push('## Policy Configuration Variables');
+    lines.push('Values supplied in the ScubaGear config that the Rego checks evaluate against:\n');
+    for (const pv of ctx.policyVariables) {
+      lines.push(`### ${pv.controlId}`);
+      for (const [name, value] of Object.entries(pv.variables)) {
+        if (Array.isArray(value)) {
+          lines.push(`- **${name}**: ${value.join(', ') || '(empty)'}`);
+        } else {
+          lines.push(`- **${name}**:`);
+          for (const [k, v] of Object.entries(value)) {
+            lines.push(`  - ${k}: ${v.join(', ') || '(empty)'}`);
           }
         }
       }
@@ -538,16 +637,21 @@ export function buildExclusionSummary(ctx: ExclusionContext): string {
 
   // Policy overrides
   if (ctx.annotatedPolicies.length > 0) {
-    lines.push('## Annotated Policies (marked as false positive)');
+    lines.push('## Annotated Policies');
     for (const ap of ctx.annotatedPolicies) {
-      lines.push(`- **${ap.controlId}**: ${ap.comment}`);
+      const tags: string[] = [];
+      if (ap.incorrectResult) tags.push('marked incorrect result');
+      if (ap.remediationDate) tags.push(`remediation due ${ap.remediationDate}`);
+      const suffix = tags.length > 0 ? ` _(${tags.join('; ')})_` : '';
+      lines.push(`- **${ap.controlId}**: ${ap.comment}${suffix}`);
     }
     lines.push('');
   }
   if (ctx.omittedPolicies.length > 0) {
     lines.push('## Omitted Policies');
     for (const op of ctx.omittedPolicies) {
-      lines.push(`- **${op.controlId}**: Expires ${op.expiration} — ${op.rationale}`);
+      const expiry = op.expiration ? `Expires ${op.expiration} — ` : '';
+      lines.push(`- **${op.controlId}**: ${expiry}${op.rationale}`);
     }
     lines.push('');
   }
@@ -592,8 +696,12 @@ export function buildExclusionSummary(ctx: ExclusionContext): string {
 }
 
 export function computeSummary(controls: ParsedControl[]): AssessmentSummary {
-  const products = Object.keys(PRODUCT_DISPLAY_NAMES) as ScubaProduct[];
-  const byProduct = {} as Record<ScubaProduct, { total: number; pass: number; fail: number }>;
+  // Union the bundled products with anything present in the results, so a product
+  // added or renamed upstream still shows up in the breakdown.
+  const products = Array.from(
+    new Set([...Object.keys(PRODUCT_DISPLAY_NAMES), ...controls.map((c) => c.product)]),
+  );
+  const byProduct: Record<string, { total: number; pass: number; fail: number }> = {};
   for (const p of products) {
     const pControls = controls.filter((c) => c.product === p);
     byProduct[p] = {

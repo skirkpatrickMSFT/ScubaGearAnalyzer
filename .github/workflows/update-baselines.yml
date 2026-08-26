@@ -1,0 +1,103 @@
+name: Update ScubaGear baselines
+
+# Manual dispatch plus a weekly poll — no push triggers.
+on:
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'ScubaGear tag to pin (default: latest release)'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: azure-functions
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: azure-functions/package-lock.json
+
+      - name: Resolve target tag
+        id: target
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ inputs.tag }}"
+          if [ -z "$TAG" ]; then
+            TAG=$(gh release view --repo cisagov/ScubaGear --json tagName -q .tagName)
+          fi
+          CURRENT=$(node -p "require('./scubagear-version.json').tag" 2>/dev/null || echo "none")
+          echo "tag=$TAG"       >> "$GITHUB_OUTPUT"
+          echo "current=$CURRENT" >> "$GITHUB_OUTPUT"
+          echo "Pinned: $CURRENT / Upstream: $TAG"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Regenerate baselines
+        id: generate
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          npm run baselines:generate -- --tag "${{ steps.target.outputs.tag }}" 2>&1 | tee gen.log
+          {
+            echo 'summary<<EOF'
+            sed -n '/^Wrote /,$p' gen.log
+            echo EOF
+          } >> "$GITHUB_OUTPUT"
+          {
+            echo 'warnings<<EOF'
+            grep '\[warn\]' gen.log || echo 'None.'
+            echo EOF
+          } >> "$GITHUB_OUTPUT"
+          rm -f gen.log
+
+      - name: Build and test
+        run: |
+          npm run build
+          npm test
+
+      - name: Open pull request
+        uses: peter-evans/create-pull-request@v6
+        with:
+          branch: chore/scubagear-${{ steps.target.outputs.tag }}
+          commit-message: 'chore: sync baselines to ScubaGear ${{ steps.target.outputs.tag }}'
+          title: 'chore: sync baselines to ScubaGear ${{ steps.target.outputs.tag }}'
+          labels: scubagear-sync
+          add-paths: |
+            azure-functions/src/shared/baseline-data.generated.ts
+            azure-functions/scubagear-version.json
+          body: |
+            Regenerated from [`cisagov/ScubaGear@${{ steps.target.outputs.tag }}`](https://github.com/cisagov/ScubaGear/releases/tag/${{ steps.target.outputs.tag }}).
+
+            Previously pinned: `${{ steps.target.outputs.current }}`
+
+            ### Control ID changes
+            ```
+            ${{ steps.generate.outputs.summary }}
+            ```
+
+            ### Generator warnings
+            ```
+            ${{ steps.generate.outputs.warnings }}
+            ```
+
+            ### Review checklist
+            - [ ] Added / removed / re-versioned control IDs look right against the upstream release notes.
+            - [ ] Any **stale override IDs** above are remapped in `baseline-overrides.json` (notably `bod2501`).
+            - [ ] A renamed or new product is covered by `productAliasGroups` and `productDisplayNames`.
+            - [ ] Schema changes (new exclusion types, result statuses) are handled in `scubagear-parser.ts` — the generator does not cover these.

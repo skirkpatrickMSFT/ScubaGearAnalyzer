@@ -24,15 +24,19 @@ export type ControlStatus =
   | 'Omitted'
   | 'Loading';
 
-/** ScubaGear product identifier */
-export type ScubaProduct =
+/** Product keys shipped by current ScubaGear releases. */
+export type KnownScubaProduct =
   | 'AAD'
   | 'DEFENDER'
+  | 'SECURITYSUITE'
   | 'EXO'
   | 'SHAREPOINT'
   | 'TEAMS'
   | 'POWERPLATFORM'
   | 'POWERBI';
+
+/** Open union so products renamed or added upstream still type-check. */
+export type ScubaProduct = KnownScubaProduct | (string & {});
 
 /** Parsed / normalised control for display */
 export interface ParsedControl {
@@ -86,7 +90,7 @@ export interface AssessmentSummary {
   thirdParty: number;
   notImplemented: number;
   omitted: number;
-  byProduct: Record<ScubaProduct, { total: number; pass: number; fail: number }>;
+  byProduct: Record<string, { total: number; pass: number; fail: number }>;
 }
 
 /** Chat message */
@@ -100,12 +104,33 @@ export interface ChatMessage {
 export interface CapExclusions {
   users: string[];
   groups: string[];
+  applications: string[];
+  guestUserTypes: string[];
+}
+
+/** Privileged-role exclusions from scuba_config (currently MS.AAD.7.4v1). */
+export interface RoleExclusions {
+  users: string[];
+  groups: string[];
 }
 
 /** Per-control exclusion config from scuba_config */
 export interface ControlExclusionConfig {
   controlId: string;
   capExclusions?: CapExclusions;
+  roleExclusions?: RoleExclusions;
+}
+
+/**
+ * Policy-specific config variables, e.g. Defender SensitiveAccounts or
+ * Exo AllowedForwardingDomains. Captured generically so variables added by
+ * future ScubaGear releases still surface.
+ */
+export interface PolicyVariableConfig {
+  controlId: string;
+  product: string;
+  /** Variable name to either a flat list or a named group of lists. */
+  variables: Record<string, string[] | Record<string, string[]>>;
 }
 
 /** Annotation (false positive) config from scuba_config */
@@ -113,6 +138,7 @@ export interface AnnotatePolicyConfig {
   controlId: string;
   incorrectResult: boolean;
   comment: string;
+  remediationDate?: string;
 }
 
 /** Omission config from scuba_config */
@@ -181,6 +207,8 @@ export interface CAPExclusionAnalysis {
 export interface ExclusionContext {
   /** Approved exclusions per control from scuba_config */
   approvedExclusions: ControlExclusionConfig[];
+  /** Policy-specific configuration variables per control */
+  policyVariables: PolicyVariableConfig[];
   /** Annotated (marked false positive) policies */
   annotatedPolicies: AnnotatePolicyConfig[];
   /** Omitted policies */

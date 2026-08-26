@@ -1,0 +1,43 @@
+{
+  "version": "1.8.0",
+  "tag": "v1.8.0",
+  "generatedAt": "2026-08-26T19:06:53.119Z",
+  "controlCount": 134,
+  "products": [
+    {
+      "key": "AAD",
+      "file": "aad.md",
+      "controls": 30
+    },
+    {
+      "key": "DEFENDER",
+      "file": "defender.md",
+      "controls": 19
+    },
+    {
+      "key": "EXO",
+      "file": "exo.md",
+      "controls": 40
+    },
+    {
+      "key": "POWERBI",
+      "file": "powerbi.md",
+      "controls": 8
+    },
+    {
+      "key": "POWERPLATFORM",
+      "file": "powerplatform.md",
+      "controls": 9
+    },
+    {
+      "key": "SHAREPOINT",
+      "file": "sharepoint.md",
+      "controls": 8
+    },
+    {
+      "key": "TEAMS",
+      "file": "teams.md",
+      "controls": 20
+    }
+  ]
+}

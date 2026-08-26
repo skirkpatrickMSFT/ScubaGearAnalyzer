@@ -12,7 +12,7 @@
 
 import { app, HttpRequest, HttpResponseInit, InvocationContext } from '@azure/functions';
 import OpenAI from 'openai';
-import { getControlById, searchControls, getControlsBySection, AAD_SECTIONS, HIGHLY_PRIVILEGED_ROLES } from '../shared/baseline-data.js';
+import { getControlById, searchControls, getControlsBySection, getSectionName, HIGHLY_PRIVILEGED_ROLES } from '../shared/baseline-data.js';
 import { searchLearn, fetchArticle, getLearnUrlsForControl, getSearchQueryForTopic } from '../shared/learn-fetcher.js';
 import { SCUBAGEAR_CURRENT_VERSION, extractProduct, buildExclusionSummary } from '../shared/scubagear-parser.js';
 import type { ExclusionContext } from '../shared/types.js';
@@ -368,9 +368,10 @@ async function dispatchToolCall(name: string, args: Record<string, unknown>): Pr
       }
       case 'baseline_get_section_summary': {
         const sn = args.sectionNumber as number;
-        const sName = AAD_SECTIONS[sn];
+        const sProduct = args.product as string | undefined;
+        const sName = getSectionName(sn, sProduct);
         if (!sName) return 'Invalid section number.';
-        const ctrls = getControlsBySection(sn);
+        const ctrls = getControlsBySection(sn, sProduct);
         let text = `# Section ${sn}: ${sName}\n\nTotal: ${ctrls.length} controls\n\n`;
         for (const c of ctrls) {
           text += `- **${c.id}** [${c.criticality}] ${c.title} (${c.checkType})\n`;

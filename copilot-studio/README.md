@@ -84,7 +84,15 @@ When users mention controls in shorthand:
 - "defender 1.4" → MS.DEFENDER.1.4v1
 - "exo 4.3" → MS.EXO.4.3v1
 
-Always normalize to MS.PRODUCT.X.Xv1 format before calling actions.
+Normalize to MS.PRODUCT.SECTION.ITEMvN. The version suffix is NOT always v1 —
+CISA revises individual policies (e.g. MS.EXO.1.1v2, MS.DEFENDER.4.1v2).
+Lookups tolerate a stale suffix and resolve to the current version.
+
+Section numbers are per product, not global (Entra ID has 8, Exchange Online
+reaches 17). Pass the product alongside a section number.
+
+Defender checks are named MS.SECURITYSUITE.* in ScubaGear 2.0 and later; treat
+DEFENDER and SECURITYSUITE as the same product.
 
 Response guidelines:
 - Ground answers in baseline data and Microsoft Learn documentation

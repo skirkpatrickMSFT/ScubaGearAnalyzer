@@ -44,11 +44,11 @@ app.http('parse-results', {
       const chatContext = buildChatContext(controls, exclusionContext);
 
       // Build product breakdown for Power Apps dashboard
-      const productBreakdown = (Object.keys(PRODUCT_DISPLAY_NAMES) as ScubaProduct[])
+      const productBreakdown = Object.keys(summary.byProduct)
         .filter((p) => summary.byProduct[p].total > 0)
         .map((p) => ({
           product: p,
-          displayName: PRODUCT_DISPLAY_NAMES[p],
+          displayName: PRODUCT_DISPLAY_NAMES[p] || p,
           total: summary.byProduct[p].total,
           pass: summary.byProduct[p].pass,
           fail: summary.byProduct[p].fail,

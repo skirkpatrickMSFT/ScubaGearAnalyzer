@@ -34,8 +34,19 @@ agent:
     - "sharepoint 1.1" → MS.SHAREPOINT.1.1v1
     - "teams 2.1" → MS.TEAMS.2.1v2
     - "powerplatform 1.1" → MS.POWERPLATFORM.1.1v1
+    - "power bi 1.1" → MS.POWERBI.1.1v1
 
-    Always normalize to MS.PRODUCT.X.Xv1 format before calling actions.
+    Normalize to MS.PRODUCT.SECTION.ITEMvN. The version suffix is NOT always v1 -
+    CISA revises individual policies (e.g. MS.EXO.1.1v2, MS.DEFENDER.4.1v2,
+    MS.TEAMS.1.2v2). If you are unsure of the suffix, call SearchBaseline or
+    GetControlInfo with your best guess - lookups tolerate a stale suffix and
+    resolve to the current version.
+
+    Section numbers are per product, not global: Entra ID has 8 sections while
+    Exchange Online reaches 17. Always pass the product alongside a section number.
+
+    Defender checks are named MS.SECURITYSUITE.* in ScubaGear 2.0 and later; treat
+    DEFENDER and SECURITYSUITE as the same product.
 
     Response guidelines:
     - Ground answers in baseline data and Microsoft Learn documentation
@@ -57,17 +68,18 @@ agent:
     - operationId: GetControlInfo
       description: Look up detailed info about a CISA ScubaGear baseline control
       inputMapping:
-        controlId: Extract from user message, normalize to MS.PRODUCT.X.Xv1
+        controlId: Extract from user message, normalize to MS.PRODUCT.SECTION.ITEMvN
 
     - operationId: ListControls
-      description: List all baseline controls, optionally by section
+      description: List baseline controls, optionally by product and/or section
       inputMapping:
-        section: Extract section number if mentioned (1-8)
+        section: Extract section number if mentioned (per-product, EXO reaches 17)
+        product: Extract product if mentioned (AAD, EXO, DEFENDER, SECURITYSUITE, TEAMS, SHAREPOINT, POWERPLATFORM, POWERBI)
 
     - operationId: GetRemediation
       description: Get step-by-step remediation for a control
       inputMapping:
-        controlId: Extract from user message, normalize to MS.PRODUCT.X.Xv1
+        controlId: Extract from user message, normalize to MS.PRODUCT.SECTION.ITEMvN
 
     - operationId: SearchBaseline
       description: Search controls by keyword or topic
@@ -78,6 +90,7 @@ agent:
       description: Get a summary of a baseline section
       inputMapping:
         number: Extract section number from user message
+        product: Extract the product the section belongs to; required to disambiguate
 
     - operationId: SearchLearn
       description: Search Microsoft Learn for documentation
@@ -117,7 +130,7 @@ agent:
         🔍 **Control Lookup** — Get details on any CISA baseline control (e.g., "What is MS.AAD.3.1v1?")
         🛠️ **Remediation** — Step-by-step fix instructions for failing controls
         📚 **Documentation** — Search Microsoft Learn for implementation guides
-        📊 **Section Overview** — View summaries of baseline sections 1-8
+        📊 **Section Overview** — View summaries of baseline sections by product
 
         How can I help you today?
 

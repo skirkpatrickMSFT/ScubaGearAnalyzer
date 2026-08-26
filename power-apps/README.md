@@ -368,7 +368,7 @@ Press **Ctrl+S** to save.
 
 1. **Insert** → search **Drop down** → click to add
 2. Select it. Set properties:
-   - **Items**: `["All", "AAD", "DEFENDER", "EXO", "SHAREPOINT", "TEAMS", "POWERPLATFORM", "POWERBI"]`
+   - **Items**: `colProductFilter` (built in Step 20, so new or renamed products appear automatically)
    - **X**: `20`, **Y**: `75`, **Width**: `200`, **Height**: `40`
    - **Default**: `"All"`
    - Rename to `drpProduct`
@@ -424,8 +424,21 @@ ClearCollect(
 ```
 Set(varSelectedProduct, "All");
 Set(varSelectedStatus, "All");
-ClearCollect(colFilteredControls, colControls)
+ClearCollect(colFilteredControls, colControls);
+ClearCollect(colProductFilter, {Value: "All"});
+ForAll(
+    colControls As C,
+    If(
+        IsBlank(LookUp(colProductFilter, Value = C.product)),
+        Collect(colProductFilter, {Value: C.product})
+    )
+)
 ```
+
+> `Distinct` is deliberately avoided here — it names its output column `Result`
+> in some Power Fx versions and `Value` in others, which produces an
+> "expects text type" error. This form only references `product`, a column we
+> know exists on `colControls`.
 
 ### Step 21 — Add the Controls Gallery
 

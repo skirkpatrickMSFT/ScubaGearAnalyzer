@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Packages the ScubaGear Analyzer into a clean distributable zip file.
 
@@ -60,6 +60,7 @@ $includeItems = @(
     "DEPLOYMENT-GUIDE.md"
     "POWER-PLATFORM-DEPLOY.md"
     "deploy-functions.ps1"
+    "update-functions.ps1"
     "teardown.ps1"
     "package.ps1"
     ".gitignore"
@@ -74,7 +75,10 @@ $includeItems = @(
     "azure-functions\package.json"
     "azure-functions\package-lock.json"
     "azure-functions\tsconfig.json"
+    "azure-functions\scubagear-version.json"
     "azure-functions\src"
+    "azure-functions\scripts"
+    "azure-functions\test"
 
     # Infrastructure
     "infra"

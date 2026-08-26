@@ -9,7 +9,8 @@
 import { app, HttpRequest, HttpResponseInit, InvocationContext } from '@azure/functions';
 import {
   ALL_BASELINE_CONTROLS,
-  AAD_SECTIONS,
+  getSectionName,
+  getControlsByProduct,
   getControlsBySection,
 } from '../shared/baseline-data.js';
 
@@ -19,17 +20,18 @@ app.http('baseline-listControls', {
   route: 'baseline/controls',
   handler: async (request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> => {
     const sectionParam = request.query.get('section');
+    const productParam = request.query.get('product') ?? undefined;
 
-    let controls = ALL_BASELINE_CONTROLS;
+    let controls = productParam ? getControlsByProduct(productParam) : ALL_BASELINE_CONTROLS;
     let sectionName: string | undefined;
 
     if (sectionParam) {
       const sectionNum = parseInt(sectionParam, 10);
-      if (isNaN(sectionNum) || sectionNum < 1 || sectionNum > 8) {
-        return { status: 400, jsonBody: { error: 'Section must be a number between 1 and 8' } };
+      if (isNaN(sectionNum) || sectionNum < 1) {
+        return { status: 400, jsonBody: { error: 'Section must be a positive number' } };
       }
-      controls = getControlsBySection(sectionNum);
-      sectionName = AAD_SECTIONS[sectionNum];
+      controls = controls.filter((c) => c.sectionNumber === sectionNum);
+      sectionName = getSectionName(sectionNum, productParam);
     }
 
     return {

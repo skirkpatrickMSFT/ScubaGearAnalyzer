@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Deploys the ScubaGear Analyzer Azure Functions backend for Power Apps (and optionally Copilot Studio).
 

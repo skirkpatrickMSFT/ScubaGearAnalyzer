@@ -88,7 +88,7 @@ for RBAC setup instructions.
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `OPENAI_API_KEY` | Yes (for chat) | OpenAI API key for GPT-4o. Only needed by the `chat` function. |
-| `SCUBAGEAR_CURRENT_VERSION` | No | Override the ScubaGear version used in baseline URLs (default: `1.7.1` from `scubagear-parser.ts`). |
+| `SCUBAGEAR_CURRENT_VERSION` | No | Override the ScubaGear version used in baseline URLs. Defaults to the pinned baseline version in `scubagear-version.json`. |
 
 ## Local Development
 

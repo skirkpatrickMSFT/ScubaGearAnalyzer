@@ -3,13 +3,18 @@
   "version": "1.0.0",
   "description": "Azure Functions backend for ScubaGear Analyzer — powers Power Apps + Copilot Studio agent",
   "main": "dist/src/functions/*.js",
+  "type": "module",
   "scripts": {
+    "baselines:generate": "node scripts/generate-baselines.mjs",
+    "baselines:check": "node scripts/generate-baselines.mjs --check",
+    "prebuild": "npm run baselines:check",
     "build": "tsc",
     "watch": "tsc -w",
     "clean": "rimraf dist",
     "prestart": "npm run build",
     "start": "func start",
-    "test": "echo \"No tests yet\" && exit 0"
+    "pretest": "tsc",
+    "test": "node --test test/*.test.mjs"
   },
   "dependencies": {
     "@azure/functions": "^4.5.0",

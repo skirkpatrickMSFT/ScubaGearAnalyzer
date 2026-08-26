@@ -3,7 +3,15 @@ scrControls As screen:
     OnVisible: |-
         =Set(varSelectedProduct, "All");
         Set(varSelectedStatus, "All");
-        ClearCollect(colFilteredControls, colControls)
+        ClearCollect(colFilteredControls, colControls);
+        ClearCollect(colProductFilter, {Value: "All"});
+        ForAll(
+            colControls As C,
+            If(
+                IsBlank(LookUp(colProductFilter, Value = C.product)),
+                Collect(colProductFilter, {Value: C.product})
+            )
+        )
 
     rectHeader2 As rectangle:
         X: =0
@@ -47,7 +55,7 @@ scrControls As screen:
         Y: =75
         Width: =200
         Height: =40
-        Items: =["All", "AAD", "DEFENDER", "EXO", "SHAREPOINT", "TEAMS", "POWERPLATFORM", "POWERBI"]
+        Items: =colProductFilter
         Default: ="All"
         OnChange: |-
             =Set(varSelectedProduct, Self.Selected.Value);

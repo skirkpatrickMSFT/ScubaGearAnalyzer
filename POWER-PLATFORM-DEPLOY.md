@@ -101,7 +101,7 @@ The upload screen includes a **Use Managed Identity** toggle. When enabled, stor
 calls skip SAS tokens and use the function app’s system-assigned identity instead.
 This requires the RBAC role assignment described in the deployment guide.
 
-Supports ScubaGear 1.5–1.7.1 output, including omitted controls, exemptions, and
+Supports ScubaGear 1.5–1.8.0 output, including omitted controls, exemptions, and
 Conditional Access Policy exclusion analysis.
 
 ## API Endpoints
