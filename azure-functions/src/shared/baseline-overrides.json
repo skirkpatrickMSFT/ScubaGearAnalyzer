@@ -1,5 +1,5 @@
 {
-  "$comment": "Fields the CISA baseline markdown cannot express, plus forward-compatibility mappings. Everything else in baseline-data.generated.ts is derived from upstream.",
+  "$comment": "Fallback data for baselines that predate the 2.0 indicator badges (BOD 25-01 / Automated / Manual / Configurable), plus product naming. For 2.0+ the badges in the upstream markdown are authoritative and the lists below are ignored. Everything else in baseline-data.generated.ts is derived from upstream.",
 
   "defaults": {
     "configurable": false
@@ -8,7 +8,7 @@
   "productDisplayNames": {
     "AAD": "Microsoft Entra ID",
     "DEFENDER": "Microsoft Defender",
-    "SECURITYSUITE": "Microsoft Defender Security Suite",
+    "SECURITYSUITE": "Security Suite (formerly Defender)",
     "EXO": "Exchange Online",
     "SHAREPOINT": "SharePoint Online",
     "TEAMS": "Microsoft Teams",

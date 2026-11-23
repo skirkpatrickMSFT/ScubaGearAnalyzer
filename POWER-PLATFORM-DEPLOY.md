@@ -101,7 +101,7 @@ The upload screen includes a **Use Managed Identity** toggle. When enabled, stor
 calls skip SAS tokens and use the function app’s system-assigned identity instead.
 This requires the RBAC role assignment described in the deployment guide.
 
-Supports ScubaGear 1.5–1.8.0 output, including omitted controls, exemptions, and
+Supports ScubaGear 1.5–2.0.0 output, including omitted controls, exemptions, and
 Conditional Access Policy exclusion analysis.
 
 ## API Endpoints
@@ -113,6 +113,8 @@ Conditional Access Policy exclusion analysis.
 | `/api/baseline/remediation?controlId=...` | GET | Get remediation steps |
 | `/api/baseline/search?query=...` | GET | Search controls by keyword |
 | `/api/baseline/section?number=...` | GET | Get section summary |
+| `/api/baseline/changes?from=...&to=...` | GET | What changed between ScubaGear releases |
+| `/api/baseline/releases` | GET | Releases covered by the change history, with release notes |
 | `/api/learn/search?query=...` | GET | Search Microsoft Learn |
 | `/api/learn/control-docs?controlId=...` | GET | Get Learn docs for a control |
 | `/api/learn/article?url=...` | GET | Fetch a Learn article |

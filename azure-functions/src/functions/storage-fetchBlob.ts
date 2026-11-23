@@ -13,7 +13,8 @@
 import { app, HttpRequest, HttpResponseInit, InvocationContext } from '@azure/functions';
 import { ContainerClient } from '@azure/storage-blob';
 import { DefaultAzureCredential } from '@azure/identity';
-import { detectAndParse, computeSummary, buildChatContext, extractExclusionContext, getControlExclusionNote, PRODUCT_DISPLAY_NAMES } from '../shared/scubagear-parser.js';
+import { detectAndParse, computeSummary, buildChatContext, extractExclusionContext, getControlExclusionNote, detectReportVersion, annotateBaselineStatus, PRODUCT_DISPLAY_NAMES } from '../shared/scubagear-parser.js';
+import { compareToBaseline } from '../shared/baseline-changes.js';
 import type { ScubaProduct } from '../shared/types.js';
 
 app.http('storage-fetchBlob', {
@@ -78,8 +79,10 @@ app.http('storage-fetchBlob', {
       }
 
       const summary = computeSummary(controls);
+      annotateBaselineStatus(controls);
+      const versionInfo = compareToBaseline(detectReportVersion(data));
       const exclusionContext = extractExclusionContext(data);
-      const chatContext = buildChatContext(controls, exclusionContext);
+      const chatContext = buildChatContext(controls, exclusionContext, versionInfo);
 
       const productBreakdown = Object.keys(summary.byProduct)
         .filter((p) => summary.byProduct[p].total > 0)
@@ -110,6 +113,9 @@ app.http('storage-fetchBlob', {
           actualValue: c.actualValue ? c.actualValue.slice(0, 8000) : '',
           hasExclusions: excNote.length > 0,
           exclusionNote: excNote,
+          baselineStatus: c.baselineStatus || 'current',
+          baselineNote: c.baselineNote || '',
+          replacedBy: c.replacedBy ? c.replacedBy.join(', ') : '',
         };
       });
 
@@ -118,6 +124,11 @@ app.http('storage-fetchBlob', {
         jsonBody: {
           source: `blob://${storageAccountName}/${containerName}/${blobName}`,
           format,
+          scubaGearVersion: versionInfo.reportVersion || '',
+          baselineVersion: versionInfo.baselineVersion,
+          versionRelation: versionInfo.relation,
+          versionNote: versionInfo.summary,
+          baselineChangesSince: versionInfo.changesSince,
           summary: {
             total: summary.total,
             pass: summary.pass,

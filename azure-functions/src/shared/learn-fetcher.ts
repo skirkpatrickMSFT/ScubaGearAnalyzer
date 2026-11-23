@@ -21,6 +21,9 @@ export interface LearnArticle {
   lastUpdated?: string;
 }
 
+import { BASELINE_CHANGES } from './baseline-changes.generated.js';
+import { getControlById } from './baseline-data.js';
+
 // ── Control-to-Learn URL mapping ───────────────────────────
 // Maps each ScubaGear control to its most relevant Learn documentation
 
@@ -618,15 +621,36 @@ export async function fetchArticle(url: string): Promise<LearnArticle | null> {
 }
 
 /**
- * Get Learn documentation URLs for a specific control
+ * Get Learn documentation URLs for a specific control.
+ *
+ * Resolution order: the curated map (exact, then ignoring the version suffix), docs
+ * inherited from controls this one replaced in a newer baseline, then the Microsoft Learn
+ * links listed in the control's own baseline Resources section.
  */
 export function getLearnUrlsForControl(controlId: string): string[] {
-  // Try exact match first, then case-insensitive
-  if (CONTROL_LEARN_URLS[controlId]) return CONTROL_LEARN_URLS[controlId];
-  const key = Object.keys(CONTROL_LEARN_URLS).find(
-    (k) => k.toLowerCase() === controlId.toLowerCase()
-  );
-  return key ? CONTROL_LEARN_URLS[key] : [];
+  const lookup = (id: string): string[] => {
+    if (CONTROL_LEARN_URLS[id]) return CONTROL_LEARN_URLS[id];
+    const wanted = id.toLowerCase();
+    const stem = wanted.replace(/v\d+$/, '');
+    const key =
+      Object.keys(CONTROL_LEARN_URLS).find((k) => k.toLowerCase() === wanted) ??
+      Object.keys(CONTROL_LEARN_URLS).find((k) => k.toLowerCase().replace(/v\d+$/, '') === stem);
+    return key ? CONTROL_LEARN_URLS[key] : [];
+  };
+
+  const direct = lookup(controlId);
+  if (direct.length > 0) return direct;
+
+  const inherited = new Set<string>();
+  const stem = controlId.toLowerCase().replace(/v\d+$/, '');
+  for (const change of BASELINE_CHANGES) {
+    if (change.type !== 'added' || change.toId?.toLowerCase().replace(/v\d+$/, '') !== stem) continue;
+    for (const oldId of change.replaces ?? []) for (const url of lookup(oldId)) inherited.add(url);
+  }
+  if (inherited.size > 0) return [...inherited];
+
+  const control = getControlById(controlId);
+  return (control?.resources ?? []).filter((u) => /^https:\/\/learn\.microsoft\.com\//i.test(u));
 }
 
 /**

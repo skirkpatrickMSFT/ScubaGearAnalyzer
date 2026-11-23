@@ -1,23 +1,18 @@
 {
-  "version": "1.8.0",
-  "tag": "v1.8.0",
-  "generatedAt": "2026-08-31T12:44:21.274Z",
-  "controlCount": 134,
+  "version": "2.0.0",
+  "tag": "v2.0.0",
+  "generatedAt": "2026-11-23T15:22:15.793Z",
+  "controlCount": 109,
   "products": [
     {
       "key": "AAD",
       "file": "aad.md",
-      "controls": 30
-    },
-    {
-      "key": "DEFENDER",
-      "file": "defender.md",
-      "controls": 19
+      "controls": 34
     },
     {
       "key": "EXO",
       "file": "exo.md",
-      "controls": 40
+      "controls": 12
     },
     {
       "key": "POWERBI",
@@ -30,6 +25,11 @@
       "controls": 9
     },
     {
+      "key": "SECURITYSUITE",
+      "file": "securitysuite.md",
+      "controls": 24
+    },
+    {
       "key": "SHAREPOINT",
       "file": "sharepoint.md",
       "controls": 8
@@ -37,7 +37,19 @@
     {
       "key": "TEAMS",
       "file": "teams.md",
-      "controls": 20
+      "controls": 14
     }
-  ]
+  ],
+  "history": {
+    "releases": [
+      "v1.5.0",
+      "v1.6.0",
+      "v1.7.0",
+      "v1.7.1",
+      "v1.8.0",
+      "v2.0.0"
+    ],
+    "changeCount": 253,
+    "legacyControlCount": 58
+  }
 }

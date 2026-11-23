@@ -80,6 +80,7 @@ jobs:
           labels: scubagear-sync
           add-paths: |
             azure-functions/src/shared/baseline-data.generated.ts
+            azure-functions/src/shared/baseline-changes.generated.ts
             azure-functions/scubagear-version.json
           body: |
             Regenerated from [`cisagov/ScubaGear@${{ steps.target.outputs.tag }}`](https://github.com/cisagov/ScubaGear/releases/tag/${{ steps.target.outputs.tag }}).
@@ -96,8 +97,11 @@ jobs:
             ${{ steps.generate.outputs.warnings }}
             ```
 
+            `baseline-changes.generated.ts` is rebuilt from every stable release since v1.5.0, so the chat can explain what changed in this release (and any it skipped) — including CISA's replacement mapping for removed controls.
+
             ### Review checklist
             - [ ] Added / removed / re-versioned control IDs look right against the upstream release notes.
-            - [ ] Any **stale override IDs** above are remapped in `baseline-overrides.json` (notably `bod2501`).
+            - [ ] Removed controls list sensible replacements (`replacedBy`) in the generated change history.
             - [ ] A renamed or new product is covered by `productAliasGroups` and `productDisplayNames`.
             - [ ] Schema changes (new exclusion types, result statuses) are handled in `scubagear-parser.ts` — the generator does not cover these.
+            - [ ] New controls that have no Microsoft Learn mapping are acceptable (they fall back to the links in the baseline's Resources section).

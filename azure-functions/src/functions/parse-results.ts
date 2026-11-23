@@ -10,7 +10,8 @@
  */
 
 import { app, HttpRequest, HttpResponseInit, InvocationContext } from '@azure/functions';
-import { detectAndParse, computeSummary, buildChatContext, extractExclusionContext, getControlExclusionNote, PRODUCT_DISPLAY_NAMES } from '../shared/scubagear-parser.js';
+import { detectAndParse, computeSummary, buildChatContext, extractExclusionContext, getControlExclusionNote, detectReportVersion, annotateBaselineStatus, PRODUCT_DISPLAY_NAMES } from '../shared/scubagear-parser.js';
+import { compareToBaseline } from '../shared/baseline-changes.js';
 import type { ScubaProduct } from '../shared/types.js';
 
 app.http('parse-results', {
@@ -38,10 +39,14 @@ app.http('parse-results', {
 
       const summary = computeSummary(controls);
 
+      // Flag controls from older ScubaGear releases that the pinned baseline has since changed
+      annotateBaselineStatus(controls);
+      const versionInfo = compareToBaseline(detectReportVersion(data));
+
       // Extract exclusion context from Raw data (CAP exclusions, AnnotatePolicy, OmitPolicy, etc.)
       const exclusionContext = extractExclusionContext(data);
 
-      const chatContext = buildChatContext(controls, exclusionContext);
+      const chatContext = buildChatContext(controls, exclusionContext, versionInfo);
 
       // Build product breakdown for Power Apps dashboard
       const productBreakdown = Object.keys(summary.byProduct)
@@ -74,6 +79,9 @@ app.http('parse-results', {
           actualValue: c.actualValue ? c.actualValue.slice(0, 8000) : '',
           hasExclusions: excNote.length > 0,
           exclusionNote: excNote,
+          baselineStatus: c.baselineStatus || 'current',
+          baselineNote: c.baselineNote || '',
+          replacedBy: c.replacedBy ? c.replacedBy.join(', ') : '',
         };
       });
 
@@ -81,6 +89,11 @@ app.http('parse-results', {
         status: 200,
         jsonBody: {
           format,
+          scubaGearVersion: versionInfo.reportVersion || '',
+          baselineVersion: versionInfo.baselineVersion,
+          versionRelation: versionInfo.relation,
+          versionNote: versionInfo.summary,
+          baselineChangesSince: versionInfo.changesSince,
           summary: {
             total: summary.total,
             pass: summary.pass,

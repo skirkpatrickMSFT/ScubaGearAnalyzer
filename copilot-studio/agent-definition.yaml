@@ -26,10 +26,13 @@ agent:
     7. GetControlDocs — Get Learn docs mapped to a control
     8. ParseResults — Parse uploaded ScubaGear JSON results
     9. Chat — Full AI-powered analysis with tool calling
+    10. GetBaselineChanges — What changed in the baselines between ScubaGear releases
+    11. GetBaselineReleases — Release list with CISA's baseline release notes
 
     When users mention controls in shorthand:
     - "entra 3.1" or "aad 3.1" → MS.AAD.3.1v1
-    - "defender 1.4" → MS.DEFENDER.1.4v1
+    - "security suite 1.1" → MS.SECURITYSUITE.1.1v1
+    - "defender 1.4" → MS.DEFENDER.1.4v1 (a ScubaGear 1.x ID — see below)
     - "exo 4.3" → MS.EXO.4.3v1
     - "sharepoint 1.1" → MS.SHAREPOINT.1.1v1
     - "teams 2.1" → MS.TEAMS.2.1v2
@@ -37,16 +40,26 @@ agent:
     - "power bi 1.1" → MS.POWERBI.1.1v1
 
     Normalize to MS.PRODUCT.SECTION.ITEMvN. The version suffix is NOT always v1 -
-    CISA revises individual policies (e.g. MS.EXO.1.1v2, MS.DEFENDER.4.1v2,
-    MS.TEAMS.1.2v2). If you are unsure of the suffix, call SearchBaseline or
-    GetControlInfo with your best guess - lookups tolerate a stale suffix and
-    resolve to the current version.
+    CISA revises individual policies (e.g. MS.AAD.3.2v2, MS.EXO.2.2v3). If you are
+    unsure of the suffix, call SearchBaseline or GetControlInfo with your best
+    guess - lookups tolerate a stale suffix and resolve to the current version.
 
-    Section numbers are per product, not global: Entra ID has 8 sections while
-    Exchange Online reaches 17. Always pass the product alongside a section number.
+    Section numbers are per product, not global. Always pass the product
+    alongside a section number.
 
-    Defender checks are named MS.SECURITYSUITE.* in ScubaGear 2.0 and later; treat
-    DEFENDER and SECURITYSUITE as the same product.
+    ScubaGear 2.0 retired the Defender baseline into MS.SECURITYSUITE.* and moved
+    several Exchange Online and Teams policies there too. Treat DEFENDER and
+    SECURITYSUITE as the same product. GetControlInfo on a removed control returns
+    baselineStatus "removed" with the replacement controls in replacedBy.
+
+    Baseline changes:
+    - For "what changed in 2.0", "what's new", or "what was removed", call
+      GetBaselineChanges (from = the release the user is coming from) and explain
+      the practical impact, not just the IDs.
+    - ParseResults returns scubaGearVersion, versionNote and per-control
+      baselineStatus. If the report is from an older ScubaGear than the baseline,
+      say so, explain controls marked removed or versionDrift, and recommend
+      re-running ScubaGear before treating results as current.
 
     Response guidelines:
     - Ground answers in baseline data and Microsoft Learn documentation
@@ -73,8 +86,8 @@ agent:
     - operationId: ListControls
       description: List baseline controls, optionally by product and/or section
       inputMapping:
-        section: Extract section number if mentioned (per-product, EXO reaches 17)
-        product: Extract product if mentioned (AAD, EXO, DEFENDER, SECURITYSUITE, TEAMS, SHAREPOINT, POWERPLATFORM, POWERBI)
+        section: Extract section number if mentioned (section numbers are per product)
+        product: Extract product if mentioned (AAD, EXO, SECURITYSUITE, TEAMS, SHAREPOINT, POWERPLATFORM, POWERBI; DEFENDER resolves to SECURITYSUITE)
 
     - operationId: GetRemediation
       description: Get step-by-step remediation for a control
@@ -107,6 +120,21 @@ agent:
       inputMapping:
         body: The JSON content provided by the user
 
+    - operationId: GetBaselineChanges
+      description: >-
+        Explain what changed in the CISA baselines between ScubaGear releases:
+        controls added, removed, re-versioned or revised, with replacement
+        mapping and release notes.
+      inputMapping:
+        from: The ScubaGear release the user is coming from (e.g. 1.8.0), if mentioned
+        to: Latest release to include, if mentioned
+        product: Product to focus on, if mentioned
+        controlId: A specific control, if mentioned
+        type: added, removed, versioned or revised, if the user asks for one kind
+
+    - operationId: GetBaselineReleases
+      description: List the ScubaGear releases the change history covers, with CISA's baseline release notes
+
     - operationId: Chat
       description: >-
         Full AI-powered chat for complex questions. Use when the user asks
@@ -131,6 +159,7 @@ agent:
         🛠️ **Remediation** — Step-by-step fix instructions for failing controls
         📚 **Documentation** — Search Microsoft Learn for implementation guides
         📊 **Section Overview** — View summaries of baseline sections by product
+        🔄 **Baseline Changes** — See what changed between ScubaGear releases (e.g., "What changed in 2.0?")
 
         How can I help you today?
 
@@ -241,6 +270,27 @@ agent:
             | SHOULD/SHOULD NOT | {shouldCount} |
             | Automated | {automatedChecks} |
             | BOD 25-01 | {bod2501Count} |
+
+    - name: BaselineChanges
+      triggerPhrases:
+        - what changed
+        - what's new in
+        - baseline changes
+        - what was removed
+        - what changed in 2.0
+        - upgrade to 2.0
+      steps:
+        - type: action
+          operationId: GetBaselineChanges
+        - type: message
+          text: |
+            ## Baseline changes {from} → {to}
+
+            | Added | Removed | Re-versioned | Revised |
+            |-------|---------|--------------|---------|
+            | {counts.added} | {counts.removed} | {counts.versioned} | {counts.revised} |
+
+            Would you like the practical impact for a specific product or control?
 
     - name: Fallback
       triggerPhrases: []

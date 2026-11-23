@@ -8,6 +8,7 @@
 
 import { app, HttpRequest, HttpResponseInit, InvocationContext } from '@azure/functions';
 import { getControlById } from '../shared/baseline-data.js';
+import { resolveControl } from '../shared/baseline-changes.js';
 
 app.http('baseline-getRemediation', {
   methods: ['GET'],
@@ -20,13 +21,22 @@ app.http('baseline-getRemediation', {
       return { status: 400, jsonBody: { error: 'controlId query parameter is required' } };
     }
 
-    if (!/^MS\.[A-Z]{2,15}\.\d{1,3}\.\d{1,3}v\d{1,2}$/.test(controlId)) {
+    if (!/^MS\.[A-Z0-9]{2,15}\.\d{1,3}\.\d{1,3}v\d{1,2}$/.test(controlId)) {
       return { status: 400, jsonBody: { error: 'Invalid controlId format' } };
     }
 
     const control = getControlById(controlId);
     if (!control) {
-      return { status: 404, jsonBody: { error: `Control '${controlId}' not found` } };
+      const resolved = resolveControl(controlId);
+      return {
+        status: 404,
+        jsonBody: {
+          error: `Control '${controlId}' not found`,
+          baselineStatus: resolved.status,
+          baselineNote: resolved.note,
+          replacedBy: resolved.replacements.map((r) => r.id),
+        },
+      };
     }
 
     return {

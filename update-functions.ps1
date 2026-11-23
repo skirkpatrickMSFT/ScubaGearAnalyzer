@@ -146,7 +146,9 @@ $hostKey = az functionapp keys list `
 $checks = @(
     @{ Name = "List controls";       Path = "/api/baseline/controls?code=$hostKey" },
     @{ Name = "Control lookup";      Path = "/api/baseline/control?controlId=MS.AAD.1.1v1&code=$hostKey" },
-    @{ Name = "Per-product section"; Path = "/api/baseline/section?number=17&product=EXO&code=$hostKey" }
+    @{ Name = "Per-product section"; Path = "/api/baseline/section?number=1&product=SECURITYSUITE&code=$hostKey" },
+    @{ Name = "Baseline changes";    Path = "/api/baseline/changes?from=1.8.0&type=removed&limit=5&code=$hostKey" },
+    @{ Name = "Baseline releases";   Path = "/api/baseline/releases?includeNotes=false&code=$hostKey" }
 )
 
 $failed = 0

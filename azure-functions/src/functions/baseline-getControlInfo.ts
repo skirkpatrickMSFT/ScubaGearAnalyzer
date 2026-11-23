@@ -9,6 +9,7 @@
 
 import { app, HttpRequest, HttpResponseInit, InvocationContext } from '@azure/functions';
 import { getControlById } from '../shared/baseline-data.js';
+import { resolveControl } from '../shared/baseline-changes.js';
 
 app.http('baseline-getControlInfo', {
   methods: ['GET'],
@@ -21,19 +22,43 @@ app.http('baseline-getControlInfo', {
       return { status: 400, jsonBody: { error: 'controlId query parameter is required' } };
     }
 
-    if (!/^MS\.[A-Z]{2,15}\.\d{1,3}\.\d{1,3}v\d{1,2}$/.test(controlId)) {
+    if (!/^MS\.[A-Z0-9]{2,15}\.\d{1,3}\.\d{1,3}v\d{1,2}$/.test(controlId)) {
       return { status: 400, jsonBody: { error: 'Invalid controlId format. Expected: MS.AAD.1.1v1' } };
     }
 
     const control = getControlById(controlId);
     if (!control) {
+      // Older reports reference controls that later baselines removed or replaced.
+      const resolved = resolveControl(controlId);
+      if (resolved.status === 'removed') {
+        const old = resolved.legacy;
+        return {
+          status: 200,
+          jsonBody: {
+            id: controlId,
+            baselineStatus: 'removed',
+            baselineNote: resolved.note,
+            replacedBy: resolved.replacements.map((r) => r.id),
+            section: old?.section ?? '',
+            sectionNumber: old?.sectionNumber ?? 0,
+            title: old?.title ?? '',
+            criticality: old?.criticality ?? '',
+            rationale: old?.rationale ?? '',
+            removedIn: old?.removedIn ?? '',
+          },
+        };
+      }
       return { status: 404, jsonBody: { error: `Control '${controlId}' not found` } };
     }
+
+    const resolved = resolveControl(controlId);
 
     return {
       status: 200,
       jsonBody: {
         id: control.id,
+        baselineStatus: resolved.status,
+        baselineNote: resolved.note,
         section: control.section,
         sectionNumber: control.sectionNumber,
         title: control.title,
@@ -43,6 +68,7 @@ app.http('baseline-getControlInfo', {
         lastModified: control.lastModified,
         checkType: control.checkType,
         configurable: control.configurable,
+        requiresConfiguration: control.requiresConfiguration,
         bod2501: control.bod2501,
         notes: control.notes,
         nistMapping: control.nistMapping,

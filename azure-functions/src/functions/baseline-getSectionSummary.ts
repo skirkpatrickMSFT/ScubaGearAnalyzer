@@ -63,7 +63,7 @@ app.http('baseline-getSectionSummary', {
           nistMapping: c.nistMapping,
           lastModified: c.lastModified,
         })),
-        ...(sectionNumber === 7
+        ...(sectionNumber === 7 && controls.some((c) => c.product === 'AAD')
           ? { highlyPrivilegedRoles: HIGHLY_PRIVILEGED_ROLES }
           : {}),
       },

@@ -55,6 +55,12 @@ export interface ParsedControl {
   resolutionDate?: string | null;
   /** Stringified JSON of the actual tenant configuration value evaluated by Rego (TestResults format only) */
   actualValue?: string;
+  /** How this control ID relates to the pinned baseline; set when it is not an exact match. */
+  baselineStatus?: 'current' | 'versionDrift' | 'removed' | 'unknown';
+  /** Plain-language explanation of the mismatch, e.g. which controls replaced a removed one. */
+  baselineNote?: string;
+  /** Current-baseline control IDs that took over a removed control's requirement. */
+  replacedBy?: string[];
 }
 
 /** A control entry from merged ScubaResults JSON */

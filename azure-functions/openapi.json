@@ -56,7 +56,7 @@
             "in": "query",
             "required": false,
             "type": "string",
-            "description": "Product key to filter by, e.g. AAD, EXO, DEFENDER, SECURITYSUITE, SHAREPOINT, TEAMS, POWERPLATFORM, POWERBI. Renamed products resolve automatically."
+            "description": "Product key to filter by, e.g. AAD, EXO, SECURITYSUITE, SHAREPOINT, TEAMS, POWERPLATFORM, POWERBI. The legacy DEFENDER key resolves to SECURITYSUITE."
           }
         ],
         "responses": {
@@ -157,6 +157,104 @@
           "200": {
             "description": "Section summary",
             "schema": { "$ref": "#/definitions/SectionSummary" }
+          }
+        }
+      }
+    },
+    "/baseline/changes": {
+      "get": {
+        "operationId": "GetBaselineChanges",
+        "summary": "Get baseline changes between releases",
+        "description": "Returns what changed in the CISA ScubaGear baselines between releases: controls added, removed, re-versioned (requirement changed) or revised, with CISA's replacement mapping for removed controls and the upstream release notes. All filters are optional; with none, the full recorded history is returned.",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "description": "Release the caller is on (e.g. 1.8.0). Only changes published after it are returned."
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "description": "Latest release to include (e.g. 2.0.0). Defaults to the current baseline."
+          },
+          {
+            "name": "product",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "description": "Product key filter, e.g. AAD, EXO, SECURITYSUITE. Renamed products (DEFENDER) resolve automatically."
+          },
+          {
+            "name": "controlId",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "description": "Only changes involving this control, including controls it replaced or was replaced by. The version suffix is optional."
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "description": "Comma-separated change types: added, removed, versioned, revised."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "description": "Maximum changes to return (default 200, max 500)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Matching baseline changes",
+            "schema": { "$ref": "#/definitions/BaselineChanges" }
+          },
+          "400": { "description": "Invalid version, controlId or type" }
+        }
+      }
+    },
+    "/baseline/releases": {
+      "get": {
+        "operationId": "GetBaselineReleases",
+        "summary": "List ScubaGear releases in the change history",
+        "description": "Lists the ScubaGear releases covered by the baseline change history, with the upstream baseline release notes for each.",
+        "parameters": [
+          {
+            "name": "includeNotes",
+            "in": "query",
+            "required": false,
+            "type": "boolean",
+            "description": "Include the release-note text (default true)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Releases",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "baselineVersion": { "type": "string" },
+                "releases": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "version": { "type": "string" },
+                      "tag": { "type": "string" },
+                      "publishedAt": { "type": "string" },
+                      "url": { "type": "string" },
+                      "baselineNotes": { "type": "string" }
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -414,13 +512,70 @@
         "lastModified": { "type": "string" },
         "checkType": { "type": "string", "enum": ["Automated", "Manual"] },
         "configurable": { "type": "boolean" },
+        "requiresConfiguration": { "type": "boolean", "description": "True when the policy needs values in the ScubaGear config file before it can be evaluated" },
         "bod2501": { "type": "boolean" },
+        "baselineStatus": { "type": "string", "enum": ["current", "versionDrift", "removed"], "description": "versionDrift: the requested ID was re-versioned and the current version is returned. removed: the control no longer exists; only legacy fields are populated." },
+        "baselineNote": { "type": "string", "description": "Explains a version change or removal, including replacement controls" },
+        "replacedBy": { "type": "array", "items": { "type": "string" }, "description": "Replacement control IDs (removed controls only)" },
+        "removedIn": { "type": "string", "description": "First release without this control (removed controls only)" },
         "notes": { "type": "array", "items": { "type": "string" } },
         "nistMapping": { "type": "array", "items": { "type": "string" } },
         "mitreMapping": { "type": "array", "items": { "type": "string" } },
         "resources": { "type": "array", "items": { "type": "string" } },
         "implementation": { "type": "string" },
         "licenseRequirements": { "type": "string" }
+      }
+    },
+    "BaselineChange": {
+      "type": "object",
+      "properties": {
+        "type": { "type": "string", "enum": ["added", "removed", "versioned", "revised"], "description": "versioned = ID version bumped because the requirement changed; revised = wording or guidance changed in place" },
+        "controlId": { "type": "string" },
+        "fromId": { "type": "string" },
+        "toId": { "type": "string" },
+        "product": { "type": "string" },
+        "fromVersion": { "type": "string" },
+        "toVersion": { "type": "string" },
+        "fields": { "type": "array", "items": { "type": "string" }, "description": "Which parts changed: requirement, criticality, rationale, implementation, notes, ..." },
+        "title": { "type": "object", "properties": { "from": { "type": "string" }, "to": { "type": "string" } } },
+        "criticality": { "type": "object", "properties": { "from": { "type": "string" }, "to": { "type": "string" } } },
+        "replacedBy": { "type": "array", "items": { "type": "string" } },
+        "replaces": { "type": "array", "items": { "type": "string" } },
+        "note": { "type": "string" }
+      }
+    },
+    "BaselineChanges": {
+      "type": "object",
+      "properties": {
+        "baselineVersion": { "type": "string" },
+        "availableReleases": { "type": "array", "items": { "type": "string" } },
+        "from": { "type": "string" },
+        "to": { "type": "string" },
+        "totalRecorded": { "type": "integer" },
+        "matched": { "type": "integer" },
+        "counts": {
+          "type": "object",
+          "properties": {
+            "added": { "type": "integer" },
+            "removed": { "type": "integer" },
+            "versioned": { "type": "integer" },
+            "revised": { "type": "integer" }
+          }
+        },
+        "truncated": { "type": "boolean" },
+        "changes": { "type": "array", "items": { "$ref": "#/definitions/BaselineChange" } },
+        "releaseNotes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "version": { "type": "string" },
+              "publishedAt": { "type": "string" },
+              "url": { "type": "string" },
+              "baselineNotes": { "type": "string" }
+            }
+          }
+        }
       }
     },
     "ControlSummary": {
@@ -503,6 +658,11 @@
       "type": "object",
       "properties": {
         "format": { "type": "string", "description": "Detected format: TestResults or ScubaResults" },
+        "scubaGearVersion": { "type": "string", "description": "ScubaGear version that produced the report (MetaData.ToolVersion); empty when unknown" },
+        "baselineVersion": { "type": "string", "description": "ScubaGear release the analyzer's baseline data was generated from" },
+        "versionRelation": { "type": "string", "enum": ["older", "same", "newer", "unknown"], "description": "How the report's ScubaGear version compares to the baseline" },
+        "versionNote": { "type": "string", "description": "Human-readable comparison of the report and baseline versions" },
+        "baselineChangesSince": { "type": "integer", "description": "Baseline changes published between an older report's version and the current baseline" },
         "summary": {
           "type": "object",
           "properties": {
@@ -547,7 +707,10 @@
               "isIncorrectResult": { "type": "boolean" },
               "actualValue": { "type": "string", "description": "Stringified JSON of the actual tenant config evaluated by Rego (TestResults format only)" },
               "hasExclusions": { "type": "boolean", "description": "True if this control has any exclusion configuration (approved exclusions, annotations, omissions, or unapproved CAP exclusions)" },
-              "exclusionNote": { "type": "string", "description": "Human-readable exclusion summary for this control (empty string if no exclusions)" }
+              "exclusionNote": { "type": "string", "description": "Human-readable exclusion summary for this control (empty string if no exclusions)" },
+              "baselineStatus": { "type": "string", "enum": ["current", "versionDrift", "removed", "unknown"], "description": "current unless the report came from an older ScubaGear whose control ID the baseline has since re-versioned or removed" },
+              "baselineNote": { "type": "string", "description": "Explains the version change or removal (empty when current)" },
+              "replacedBy": { "type": "string", "description": "Comma-separated current control IDs that replaced a removed control (empty when none)" }
             }
           }
         },

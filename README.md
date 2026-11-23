@@ -2,9 +2,9 @@
 
 Analyze CISA ScubaGear assessment results with an interactive Power Apps dashboard and AI-powered remediation chat. Upload your `TestResults.json` from a ScubaGear run — or load results directly from Azure Blob Storage (e.g. a ScubaConnect output container) — and get compliance insights grounded in CISA baselines and Microsoft Learn documentation.
 
-Supports **ScubaGear 1.5–1.8.0** output formats, including omitted controls, exemptions, incorrect-result overrides, per-control comments, and **Conditional Access Policy exclusion analysis** with per-policy user/group breakdown.
+Supports **ScubaGear 1.5–2.0.0** output formats, including omitted controls, exemptions, incorrect-result overrides, per-control comments, and **Conditional Access Policy exclusion analysis** with per-policy user/group breakdown.
 
-Baseline control data is **generated directly from the CISA baselines** at a pinned ScubaGear tag, so new releases are a regeneration rather than a hand edit. See [Updating baselines](#updating-baselines).
+Baseline control data is **generated directly from the CISA baselines** at a pinned ScubaGear tag (currently **v2.0.0**), so new releases are a regeneration rather than a hand edit. The same generator also records **how the baselines changed between releases**, so the chat can explain what was added, removed, re-versioned or revised — and what to do about it. See [Updating baselines](#updating-baselines) and [Baseline change tracking](#baseline-change-tracking).
 
 [![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2FskirkpatrickMSFT%2FScubaGearAnalyzer%2Fmain%2Fazuredeploy.json)
 
@@ -12,7 +12,7 @@ Baseline control data is **generated directly from the CISA baselines** at a pin
 
 | Component | Description |
 |-----------|-------------|
-| `azure-functions/` | TypeScript Azure Functions backend — JSON parsing, baseline lookups, Learn docs, storage integration, GPT-4o chat (12 endpoints) |
+| `azure-functions/` | TypeScript Azure Functions backend — JSON parsing, baseline lookups and change history, Learn docs, storage integration, GPT-4o chat (14 endpoints) |
 | `infra/` | Bicep deployment templates (`functions.bicep`, `external-storage-rbac.bicep`) |
 | `power-apps/` | Power Apps canvas app — pre-built `.msapp` export + step-by-step build guide + source files |
 | `copilot-studio/` | Copilot Studio agent definition *(optional — alternative chat interface)* |
@@ -39,6 +39,7 @@ Baseline control data is **generated directly from the CISA baselines** at a pin
 │          Azure Functions (Flex Consumption)     │
 │  /api/parse-results      — ScubaGear JSON parser│
 │  /api/baseline/*         — CISA baseline data   │
+│  /api/baseline/changes   — Baseline change log  │
 │  /api/learn/*            — Microsoft Learn proxy│
 │  /api/storage/list-blobs — Browse blob storage  │
 │  /api/storage/fetch-blob — Load blob & parse    │
@@ -122,14 +123,18 @@ Follow [copilot-studio/README.md](copilot-studio/README.md) to create an AI agen
 
 ## Supported Products
 
-The analyzer includes full baseline data for all CISA ScubaGear products:
+The analyzer includes full baseline data for all CISA ScubaGear products (ScubaGear v2.0.0):
 
-- **Microsoft Entra ID** (AAD) — 18 controls
-- **Exchange Online** (EXO) — 18 controls
-- **Microsoft Defender** — 10 controls
-- **Power Platform** — 7 controls
+- **Microsoft Entra ID** (AAD) — 34 controls
+- **Exchange Online** (EXO) — 12 controls
+- **Security Suite** (Defender for Office 365 / EOP, formerly the Defender baseline) — 24 controls
+- **Power BI** — 8 controls
+- **Power Platform** — 9 controls
 - **SharePoint Online** — 8 controls
-- **Microsoft Teams** — 10 controls
+- **Microsoft Teams** — 14 controls
+
+Reports from ScubaGear 1.x that reference `MS.DEFENDER.*` and other controls removed in 2.0 still load: the
+analyzer flags them, shows which controls replaced them, and the chat explains the difference.
 
 ## ScubaGear JSON Format
 
@@ -150,13 +155,13 @@ The app accepts both ScubaGear output formats:
 ]
 ```
 
-**ScubaResults format** (ScubaGear 1.5–1.7) — nested with product groups:
+**ScubaResults format** (ScubaGear 1.5+) — nested with product groups:
 
 ```json
-{ "Results": { "AAD": [{ "GroupName": "...", "Controls": [...] }], ... } }
+{ "MetaData": { "ToolVersion": "2.0.0" }, "Results": { "AAD": [{ "GroupName": "...", "Controls": [...] }], ... } }
 ```
 
-ScubaGear 1.7+ fields supported: `Omitted` status, `OmittedEvaluationResult`, `IncorrectResult`, `OriginalResult`, `Comments`, `ResolutionDate`.
+ScubaGear 1.7+ fields supported: `Omitted` status, `OmittedEvaluationResult`, `IncorrectResult`, `OriginalResult`, `Comments`, `ResolutionDate`. `MetaData.ToolVersion` is used to compare the report against the analyzer's baseline version.
 
 ## Key Features
 
@@ -170,10 +175,14 @@ ScubaGear 1.7+ fields supported: `Omitted` status, `OmittedEvaluationResult`, `I
   Managed Identity is enabled, the function app uses its system-assigned identity with RBAC
   (Storage Blob Data Reader) — no SAS token needed.
 - **Baseline URL Version Rewriting** — ScubaGear embeds GitHub URLs pointing to the version that
-  generated the report. The parser rewrites these to the pinned baseline version (`v1.8.0`) so links
+  generated the report. The parser rewrites these to the pinned baseline version (`v2.0.0`) so links
   always point to matching baseline documentation.
+- **Baseline Change Awareness** — The chat can explain what changed between ScubaGear releases
+  (e.g. "what changed in 2.0?"), what happened to a specific control, and how an older report's
+  results map onto the current baseline. See [Baseline change tracking](#baseline-change-tracking).
 - **GPT-4o Compliance Chat** — Context-aware AI assistant with function-calling that can look up
-  controls, fetch remediation steps, search Microsoft Learn, and analyze Rego policy logic.
+  controls, fetch remediation steps, search Microsoft Learn, analyze Rego policy logic, and explain
+  baseline changes.
 
 ## API Endpoints
 
@@ -185,6 +194,8 @@ ScubaGear 1.7+ fields supported: `Omitted` status, `OmittedEvaluationResult`, `I
 | `/api/baseline/remediation?controlId=...` | GET | Get remediation steps |
 | `/api/baseline/search?query=...` | GET | Search controls by keyword |
 | `/api/baseline/section?number=...` | GET | Get section summary |
+| `/api/baseline/changes?from=...&to=...` | GET | What changed between releases (filter by `product`, `controlId`, `type`) |
+| `/api/baseline/releases` | GET | Releases covered by the change history, with CISA's baseline release notes |
 | `/api/learn/control-docs?controlId=...` | GET | Get Learn docs for a control |
 | `/api/learn/search?query=...` | GET | Search Microsoft Learn |
 | `/api/learn/article?url=...` | GET | Fetch a Learn article |
@@ -193,13 +204,15 @@ ScubaGear 1.7+ fields supported: `Omitted` status, `OmittedEvaluationResult`, `I
 | `/api/chat` | POST | AI-powered compliance chat |
 
 ## Updating baselines
-Control data in `azure-functions/src/shared/baseline-data.generated.ts` is produced from the
-CISA baseline markdown at a pinned ScubaGear tag. Never edit it by hand.
+
+Control data in `azure-functions/src/shared/baseline-data.generated.ts` and the release change history in
+`azure-functions/src/shared/baseline-changes.generated.ts` are produced from the CISA baseline markdown
+at a pinned ScubaGear tag. Never edit either by hand.
 
 ```powershell
 cd azure-functions
 npm run baselines:generate                 # latest ScubaGear release
-npm run baselines:generate -- --tag v1.8.0 # a specific tag
+npm run baselines:generate -- --tag v2.0.0 # a specific tag
 npm run baselines:check                    # fails if the committed data drifted
 ```
 
@@ -213,21 +226,43 @@ What is derived automatically:
 |-------|--------|
 | Requirement, rationale, notes, NIST / MITRE, resources, implementation | baseline markdown |
 | `criticality` | `<!--Policy:-->` marker plus SHALL NOT / SHOULD NOT in the requirement |
-| `checkType` | whether a Rego rule ships for the policy ID |
+| `bod2501`, `configurable`, `requiresConfiguration`, `checkType` | indicator badges in the markdown (ScubaGear 2.0+); older tags use the Rego rules that ship plus `baseline-overrides.json` |
 | `exclusionType` | `<!--ExclusionType:-->` marker |
 | `product`, section names | the policy IDs themselves, not filenames |
+| Release history, replacement mapping, removal rationale | every stable release since v1.5.0, upstream `scuba-baseline-policy-migrations.csv`, `removedpolicies.md` and the release notes |
 
-Only `bod2501` and `configurable` overrides live in `baseline-overrides.json`, because CISA
-does not encode them in the markdown. The generator warns when an override references a
-control ID that no longer exists — that is the signal a policy was renamed or removed.
+`baseline-overrides.json` only supplies `bod2501` / `configurable` for baselines that predate the
+indicator badges, plus product display names and alias groups. Once a product ships badges its override
+lists are ignored, so stale override warnings are only raised for products without them.
+
+### Baseline change tracking
+
+The generator snapshots each stable ScubaGear release (`--since v1.5.0` by default), diffs consecutive
+releases by policy ID, and records each difference as one of:
+
+| Type | Meaning |
+|------|---------|
+| `added` | New control, with the older controls it absorbed (`replaces`) |
+| `removed` | Control dropped, with CISA's `replacedBy` mapping and removal rationale |
+| `versioned` | Control ID version bumped (e.g. `MS.AAD.3.2v1` → `v2`) because the requirement changed, with before/after text |
+| `revised` | Wording, rationale, implementation or notes changed without a version bump |
+
+NIST / MITRE mapping-only updates are intentionally not recorded. Controls that no longer exist are kept as
+`LEGACY_CONTROLS` so reports from older ScubaGear releases can still be explained.
+
+This powers `/api/baseline/changes`, `/api/baseline/releases`, the chat's `baseline_get_changes`,
+`baseline_get_control_history` and `baseline_get_release_notes` tools, and the per-control
+`baselineStatus` that `/api/parse-results` returns (`current`, `versionDrift`, `removed`). When a report was
+produced by an older ScubaGear than the baseline, `parse-results` also returns `scubaGearVersion`,
+`versionRelation` and a `versionNote`, and the same note is placed at the top of the chat context.
 
 ### Product renames
 
 Products are keyed by their policy IDs and discovered from the upstream `baselines/`
-directory, so a new or renamed product needs no code change. ScubaGear 2.0 splits Defender
-checks into `MS.SECURITYSUITE.*`; that rename is already covered by `productAliasGroups`
-in `baseline-overrides.json`, which lets results from either naming resolve to whichever
-key the pinned baseline ships.
+directory, so a new or renamed product needs no code change. ScubaGear 2.0 retired the
+Defender baseline into `MS.SECURITYSUITE.*`; `productAliasGroups` in `baseline-overrides.json`
+maps results from either naming onto whichever key the pinned baseline ships (currently
+`SECURITYSUITE`).
 
 Schema changes — new exclusion types, new result statuses — are **not** covered by the
 generator and still need a code review pass over `scubagear-parser.ts`.

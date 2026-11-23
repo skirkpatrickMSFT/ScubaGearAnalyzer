@@ -28,6 +28,7 @@ import {
   SCUBAGEAR_BASELINE_VERSION,
   canonicalizeProduct,
 } from './baseline-data.js';
+import { resolveControl, type VersionComparison } from './baseline-changes.js';
 
 export { PRODUCT_DISPLAY_NAMES };
 
@@ -36,6 +37,30 @@ const TOP_LEVEL_POLICY_KEYS = new Set(['AnnotatePolicy', 'OmitPolicy']);
 
 function strList(value: unknown): string[] {
   return Array.isArray(value) ? value.map(String) : [];
+}
+
+/** Reads the ScubaGear version that produced a ScubaResults.json (`MetaData.ToolVersion`). */
+export function detectReportVersion(data: unknown): string | null {
+  if (typeof data !== 'object' || data === null || Array.isArray(data)) return null;
+  const root = data as Record<string, unknown>;
+  const meta = (root.MetaData ?? root.Metadata) as Record<string, unknown> | undefined;
+  const v = meta?.ToolVersion;
+  return typeof v === 'string' && v.trim() ? v.trim() : null;
+}
+
+/**
+ * Flags controls whose ID is not in the pinned baseline — typically results from an
+ * older ScubaGear release — and records what replaced them.
+ */
+export function annotateBaselineStatus(controls: ParsedControl[]): ParsedControl[] {
+  for (const c of controls) {
+    const r = resolveControl(c.controlId);
+    if (r.status === 'current') continue;
+    c.baselineStatus = r.status;
+    c.baselineNote = r.note;
+    if (r.replacements.length) c.replacedBy = r.replacements.map((x) => x.id);
+  }
+  return controls;
 }
 
 export function extractProduct(policyId: string): ScubaProduct | null {
@@ -333,7 +358,7 @@ export function extractExclusionContext(data: unknown): ExclusionContext | null 
             }
           }
           if (Object.keys(variables).length > 0) {
-            policyVariables.push({ controlId, product: key.toUpperCase(), variables });
+            policyVariables.push({ controlId, product: canonicalizeProduct(key), variables });
           }
         }
       }
@@ -724,8 +749,15 @@ export function computeSummary(controls: ParsedControl[]): AssessmentSummary {
 
 const MAX_CONTEXT_CHARS = 120_000;
 
-export function buildChatContext(controls: ParsedControl[], exclusionCtx?: ExclusionContext | null): string {
+export function buildChatContext(
+  controls: ParsedControl[],
+  exclusionCtx?: ExclusionContext | null,
+  versionInfo?: VersionComparison | null,
+): string {
   const lines: string[] = ['# ScubaGear Assessment Results\n'];
+  if (versionInfo) {
+    lines.push(`> ${versionInfo.summary}\n`);
+  }
   const products = [...new Set(controls.map((c) => c.product))].sort();
   for (const product of products) {
     const pControls = controls.filter((c) => c.product === product);
@@ -736,6 +768,13 @@ export function buildChatContext(controls: ParsedControl[], exclusionCtx?: Exclu
     for (const c of pControls) {
       const icon = c.status === 'Pass' ? '✅' : c.status === 'Fail' ? '❌' : c.status === 'Omitted' ? '⏭️' : '📋';
       let line = `${icon} **${c.controlId}** [${c.criticality}] — ${c.status}`;
+      if (c.baselineStatus === 'removed') {
+        line += c.replacedBy?.length
+          ? ` (REMOVED from baseline; now ${c.replacedBy.join(', ')})`
+          : ' (REMOVED from baseline)';
+      } else if (c.baselineStatus === 'versionDrift') {
+        line += ' (control re-versioned in newer baseline)';
+      }
       if (c.isOmitted) {
         line += ' (OMITTED via config)';
         if (c.omittedEvaluationResult) line += ` [would be: ${c.omittedEvaluationResult}]`;

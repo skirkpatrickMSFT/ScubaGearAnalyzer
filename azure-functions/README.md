@@ -34,11 +34,13 @@ Power Apps / Copilot Studio
 
 | Function | Method | Route | Description |
 |----------|--------|-------|-------------|
-| **baseline-getControlInfo** | GET | `/api/baseline/control?controlId=MS.AAD.1.1v1` | Returns full details for a specific control: description, criticality, rationale, NIST/MITRE mappings, BOD 25-01 applicability, remediation steps, and license requirements. |
+| **baseline-getControlInfo** | GET | `/api/baseline/control?controlId=MS.AAD.1.1v1` | Returns full details for a specific control: description, criticality, rationale, NIST/MITRE mappings, BOD 25-01 applicability, remediation steps, and license requirements. Includes `baselineStatus` (`current`, `versionDrift`, `removed`) and, for controls removed from the baseline, the replacement controls. |
 | **baseline-getRemediation** | GET | `/api/baseline/remediation?controlId=MS.AAD.3.1v1` | Returns remediation/implementation steps, rationale, notes, license requirements, and resource links for a control. |
-| **baseline-getSectionSummary** | GET | `/api/baseline/section?number=3` | Returns a summary of a baseline section (1–8): control count, SHALL/SHOULD breakdown, automated vs manual checks, BOD 25-01 count, and the list of controls. Section 7 also returns the highly privileged roles list. |
-| **baseline-listControls** | GET | `/api/baseline/controls?section=3` | Lists all baseline controls or filters by section number. Returns control ID, title, criticality, check type, and section info. |
+| **baseline-getSectionSummary** | GET | `/api/baseline/section?number=3&product=AAD` | Returns a summary of a baseline section (numbering is per product): control count, SHALL/SHOULD breakdown, automated vs manual checks, BOD 25-01 count, and the list of controls. Entra ID section 7 also returns the highly privileged roles list. |
+| **baseline-listControls** | GET | `/api/baseline/controls?product=EXO&section=3` | Lists all baseline controls or filters by product and/or section number. Returns control ID, title, criticality, check type, and section info. |
 | **baseline-search** | GET | `/api/baseline/search?query=MFA` | Keyword search across baseline controls. Matches against control ID, title, description, and section name. |
+| **baseline-getChanges** | GET | `/api/baseline/changes?from=1.8.0&to=2.0.0&product=AAD&controlId=...&type=removed&limit=200` | What changed in the baselines between ScubaGear releases: controls added, removed, re-versioned or revised, with CISA's replacement mapping and the upstream release notes. All filters are optional. |
+| **baseline-getReleases** | GET | `/api/baseline/releases?includeNotes=true` | Lists the releases covered by the change history with the "Baselines" section of each release's notes. |
 
 ### Microsoft Learn
 
@@ -59,8 +61,9 @@ Power Apps / Copilot Studio
 
 | Module | Description |
 |--------|-------------|
-| `shared/scubagear-parser.ts` | Detects ScubaGear format (TestResults pre-1.5 vs ScubaResults 1.5–1.7+), extracts controls, computes summaries, builds chat context, rewrites baseline URLs to current version, and performs **Conditional Access Policy exclusion analysis** — classifies policies by category (MFA, phishing-resistant MFA, block legacy auth, etc.), identifies approved vs unapproved exclusions, and generates per-control notes with user/group counts. Handles Omitted, IncorrectResult, Comments, and ResolutionDate fields. |
-| `shared/baseline-data.ts` | Static CISA ScubaGear AAD baseline data — all controls, sections 1–8, highly privileged roles list. Provides lookup, search, and filtering functions. |
+| `shared/scubagear-parser.ts` | Detects ScubaGear format (TestResults pre-1.5 vs ScubaResults 1.5+), extracts controls and the report's ScubaGear version, flags controls the pinned baseline has removed or re-versioned, computes summaries, builds chat context, rewrites baseline URLs to current version, and performs **Conditional Access Policy exclusion analysis** — classifies policies by category (MFA, phishing-resistant MFA, block legacy auth, etc.), identifies approved vs unapproved exclusions, and generates per-control notes with user/group counts. Handles Omitted, IncorrectResult, Comments, and ResolutionDate fields. |
+| `shared/baseline-data.ts` | Lookup, search and filtering helpers over the generated CISA ScubaGear baseline data (`baseline-data.generated.ts`) for every product, plus the highly privileged roles list. |
+| `shared/baseline-changes.ts` | Query helpers over the generated release history (`baseline-changes.generated.ts`): change lookups by version/product/control, `resolveControl` (current / re-versioned / removed), report-vs-baseline version comparison, and Markdown formatting for the chat. |
 | `shared/learn-fetcher.ts` | Microsoft Learn integration — search, article fetching, and control-to-URL mapping. |
 | `shared/types.ts` | TypeScript type definitions shared across functions. |
 
