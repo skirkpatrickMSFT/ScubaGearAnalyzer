@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.49.2.45890",
-      "templateHash": "6109411510468163947"
+      "templateHash": "3490217423072518122"
     },
     "description": "Deploys the ScubaGear Analyzer Azure Functions backend (Flex Consumption) with identity-based storage, private endpoints, Application Insights, an optional results storage account, and RBAC. After deployment, run the GitHub Actions workflow to deploy the function code, or run deploy-functions.ps1 locally."
   },
@@ -294,7 +294,7 @@
           },
           "runtime": {
             "name": "node",
-            "version": "22"
+            "version": "26"
           }
         },
         "siteConfig": {

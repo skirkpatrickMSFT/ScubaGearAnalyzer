@@ -84,7 +84,7 @@ Before you begin, make sure the following are available in your environment.
 |-------------|---------|
 | **Azure subscription** | Any subscription where you can create resource groups |
 | **Azure CLI** | Install from [https://aka.ms/installazurecli](https://aka.ms/installazurecli), then run `az login` |
-| **Node.js 22+** | Install from [https://nodejs.org](https://nodejs.org) |
+| **Node.js 26+** | Install from [https://nodejs.org](https://nodejs.org) |
 | **AI model for chat** | Either an OpenAI API key (GPT-4o) from [https://platform.openai.com](https://platform.openai.com), or an existing Azure OpenAI / Azure AI Foundry chat model deployment (no key; uses Managed Identity) |
 | **Power Platform environment** | With Power Apps access (Copilot Studio is optional) |
 
@@ -92,7 +92,7 @@ Verify your tools:
 
 ```powershell
 az --version       # Azure CLI
-node --version     # Node.js 22+
+node --version     # Node.js 26+
 ```
 
 ---

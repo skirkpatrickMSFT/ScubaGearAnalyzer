@@ -66,7 +66,7 @@
               "type": "object",
               "properties": {
                 "section": { "type": "string" },
-                "count": { "type": "integer" },
+                "count": { "type": "integer", "format": "int32" },
                 "controls": {
                   "type": "array",
                   "items": { "$ref": "#/definitions/ControlSummary" }
@@ -121,7 +121,7 @@
               "type": "object",
               "properties": {
                 "query": { "type": "string" },
-                "count": { "type": "integer" },
+                "count": { "type": "integer", "format": "int32" },
                 "results": {
                   "type": "array",
                   "items": { "$ref": "#/definitions/ControlSummary" }
@@ -288,7 +288,7 @@
               "type": "object",
               "properties": {
                 "query": { "type": "string" },
-                "count": { "type": "integer" },
+                "count": { "type": "integer", "format": "int32" },
                 "results": {
                   "type": "array",
                   "items": { "$ref": "#/definitions/LearnResult" }
@@ -329,7 +329,7 @@
               "properties": {
                 "controlId": { "type": "string" },
                 "mapped": { "type": "boolean" },
-                "count": { "type": "integer" },
+                "count": { "type": "integer", "format": "int32" },
                 "urls": { "type": "array", "items": { "type": "string" } }
               }
             }
@@ -504,7 +504,7 @@
       "properties": {
         "id": { "type": "string" },
         "section": { "type": "string" },
-        "sectionNumber": { "type": "integer" },
+        "sectionNumber": { "type": "integer", "format": "int32" },
         "title": { "type": "string" },
         "description": { "type": "string" },
         "criticality": { "type": "string", "enum": ["SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT"] },
@@ -551,15 +551,15 @@
         "availableReleases": { "type": "array", "items": { "type": "string" } },
         "from": { "type": "string" },
         "to": { "type": "string" },
-        "totalRecorded": { "type": "integer" },
-        "matched": { "type": "integer" },
+        "totalRecorded": { "type": "integer", "format": "int32" },
+        "matched": { "type": "integer", "format": "int32" },
         "counts": {
           "type": "object",
           "properties": {
-            "added": { "type": "integer" },
-            "removed": { "type": "integer" },
-            "versioned": { "type": "integer" },
-            "revised": { "type": "integer" }
+            "added": { "type": "integer", "format": "int32" },
+            "removed": { "type": "integer", "format": "int32" },
+            "versioned": { "type": "integer", "format": "int32" },
+            "revised": { "type": "integer", "format": "int32" }
           }
         },
         "truncated": { "type": "boolean" },
@@ -586,7 +586,7 @@
         "criticality": { "type": "string" },
         "checkType": { "type": "string" },
         "bod2501": { "type": "boolean" },
-        "sectionNumber": { "type": "integer" },
+        "sectionNumber": { "type": "integer", "format": "int32" },
         "section": { "type": "string" }
       }
     },
@@ -605,14 +605,14 @@
     "SectionSummary": {
       "type": "object",
       "properties": {
-        "sectionNumber": { "type": "integer" },
+        "sectionNumber": { "type": "integer", "format": "int32" },
         "sectionName": { "type": "string" },
-        "totalControls": { "type": "integer" },
-        "shallCount": { "type": "integer" },
-        "shouldCount": { "type": "integer" },
-        "automatedChecks": { "type": "integer" },
-        "manualChecks": { "type": "integer" },
-        "bod2501Count": { "type": "integer" },
+        "totalControls": { "type": "integer", "format": "int32" },
+        "shallCount": { "type": "integer", "format": "int32" },
+        "shouldCount": { "type": "integer", "format": "int32" },
+        "automatedChecks": { "type": "integer", "format": "int32" },
+        "manualChecks": { "type": "integer", "format": "int32" },
+        "bod2501Count": { "type": "integer", "format": "int32" },
         "controls": { "type": "array", "items": { "$ref": "#/definitions/ControlSummary" } }
       }
     },
@@ -640,7 +640,7 @@
         "storageAccountName": { "type": "string" },
         "containerName": { "type": "string" },
         "prefix": { "type": "string" },
-        "count": { "type": "integer" },
+        "count": { "type": "integer", "format": "int32" },
         "blobs": {
           "type": "array",
           "items": {
@@ -648,7 +648,7 @@
             "properties": {
               "name": { "type": "string", "description": "Full blob path (e.g. '2026/02/27/ScubaResults.json')" },
               "lastModified": { "type": "string", "description": "ISO 8601 timestamp" },
-              "size": { "type": "integer", "description": "Blob size in bytes" }
+              "size": { "type": "integer", "format": "int32", "description": "Blob size in bytes" }
             }
           }
         }
@@ -662,18 +662,18 @@
         "baselineVersion": { "type": "string", "description": "ScubaGear release the analyzer's baseline data was generated from" },
         "versionRelation": { "type": "string", "enum": ["older", "same", "newer", "unknown"], "description": "How the report's ScubaGear version compares to the baseline" },
         "versionNote": { "type": "string", "description": "Human-readable comparison of the report and baseline versions" },
-        "baselineChangesSince": { "type": "integer", "description": "Baseline changes published between an older report's version and the current baseline" },
+        "baselineChangesSince": { "type": "integer", "format": "int32", "description": "Baseline changes published between an older report's version and the current baseline" },
         "summary": {
           "type": "object",
           "properties": {
-            "total": { "type": "integer" },
-            "pass": { "type": "integer" },
-            "fail": { "type": "integer" },
-            "manual": { "type": "integer" },
-            "thirdParty": { "type": "integer" },
-            "notImplemented": { "type": "integer" },
-            "omitted": { "type": "integer" },
-            "overallPassRate": { "type": "integer", "description": "Pass rate percentage (0-100)" }
+            "total": { "type": "integer", "format": "int32" },
+            "pass": { "type": "integer", "format": "int32" },
+            "fail": { "type": "integer", "format": "int32" },
+            "manual": { "type": "integer", "format": "int32" },
+            "thirdParty": { "type": "integer", "format": "int32" },
+            "notImplemented": { "type": "integer", "format": "int32" },
+            "omitted": { "type": "integer", "format": "int32" },
+            "overallPassRate": { "type": "integer", "format": "int32", "description": "Pass rate percentage (0-100)" }
           }
         },
         "productBreakdown": {
@@ -683,10 +683,10 @@
             "properties": {
               "product": { "type": "string" },
               "displayName": { "type": "string" },
-              "total": { "type": "integer" },
-              "pass": { "type": "integer" },
-              "fail": { "type": "integer" },
-              "passRate": { "type": "integer" }
+              "total": { "type": "integer", "format": "int32" },
+              "pass": { "type": "integer", "format": "int32" },
+              "fail": { "type": "integer", "format": "int32" },
+              "passRate": { "type": "integer", "format": "int32" }
             }
           }
         },

@@ -56,7 +56,7 @@ Baseline control data is **generated directly from the CISA baselines** at a pin
 
 - **Azure subscription**
 - **Azure CLI** (`az`) installed and logged in
-- **Node.js 22+**
+- **Node.js 26+**
 - **An AI model for chat**: an **OpenAI API key** (GPT-4o), *or* an existing **Azure OpenAI / Azure AI Foundry** model deployment (no key needed — see [Using Azure OpenAI](#using-azure-openai-instead-of-an-openai-key))
 - **Power Platform environment** (for Power Apps; Copilot Studio is optional)
 
@@ -358,7 +358,7 @@ $env:OPENAI_API_KEY = "<your-key>"
 func start
 ```
 
-The function app runs on Node.js 22 (Flex Consumption plan in Azure).
+The function app runs on Node.js 26 (Flex Consumption plan in Azure).
 
 ## Teardown
 

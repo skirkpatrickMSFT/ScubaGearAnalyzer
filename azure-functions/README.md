@@ -1,6 +1,6 @@
 # ScubaGear Analyzer — Azure Functions Backend
 
-TypeScript Azure Functions (Node.js 22, v4 programming model) that power the
+TypeScript Azure Functions (Node.js 26, v4 programming model) that power the
 ScubaGear Analyzer. These functions are consumed by the Power Apps canvas app via
 a custom connector and optionally by a Copilot Studio agent.
 
@@ -110,7 +110,7 @@ npm start          # Starts the Azure Functions local runtime on port 7071
 ```
 
 Requires:
-- Node.js 22+
+- Node.js 26+
 - [Azure Functions Core Tools](https://learn.microsoft.com/en-us/azure/azure-functions/functions-run-local) v4+
 
 Create a `local.settings.json` (git-ignored) with:
@@ -135,7 +135,7 @@ See the [Deployment Guide](../DEPLOYMENT-GUIDE.md) for full instructions. Quick 
 .\deploy-functions.ps1 -ResourceGroup <rg-name> -Location <region>
 ```
 
-This deploys to an Azure Functions Flex Consumption plan with Node.js 22.
+This deploys to an Azure Functions Flex Consumption plan with Node.js 26.
 
 ## Project Structure
 
