@@ -2,12 +2,12 @@
   "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
   "contentVersion": "1.0.0.0",
   "metadata": {
-    "description": "Deploys the ScubaGear Analyzer Azure Functions backend (Flex Consumption) with storage, Application Insights, Managed Identity, and RBAC. After deployment, run the GitHub Actions workflow to deploy the function code, or run deploy-functions.ps1 locally.",
     "_generator": {
       "name": "bicep",
-      "version": "0.40.2.10011",
-      "templateHash": "15886137192161581350"
-    }
+      "version": "0.49.2.45890",
+      "templateHash": "6109411510468163947"
+    },
+    "description": "Deploys the ScubaGear Analyzer Azure Functions backend (Flex Consumption) with identity-based storage, private endpoints, Application Insights, an optional results storage account, and RBAC. After deployment, run the GitHub Actions workflow to deploy the function code, or run deploy-functions.ps1 locally."
   },
   "parameters": {
     "baseName": {
@@ -32,35 +32,35 @@
         "azure"
       ],
       "metadata": {
-        "description": "Chat model provider: 'openai' (OpenAI API key) or 'azure' (Azure OpenAI / Azure AI Foundry, authenticated with the function app Managed Identity)."
+        "description": "Chat model provider: \"openai\" (OpenAI API key) or \"azure\" (Azure OpenAI / Azure AI Foundry, authenticated with the function app Managed Identity)"
       }
     },
     "openAiApiKey": {
       "type": "securestring",
       "defaultValue": "",
       "metadata": {
-        "description": "OpenAI API key for GPT-4o chat (get one at https://platform.openai.com). Required when aiProvider is 'openai'; leave empty for 'azure'."
+        "description": "OpenAI API key for GPT-4o chat. Required when aiProvider is \"openai\"; ignored for \"azure\"."
       }
     },
     "azureOpenAiEndpoint": {
       "type": "string",
       "defaultValue": "",
       "metadata": {
-        "description": "Azure OpenAI endpoint, e.g. https://<resource>.openai.azure.com. Required when aiProvider is 'azure'."
+        "description": "Azure OpenAI endpoint, e.g. https://<resource>.openai.azure.com. Required when aiProvider is \"azure\"."
       }
     },
     "azureOpenAiDeployment": {
       "type": "string",
       "defaultValue": "",
       "metadata": {
-        "description": "Name of the model deployment to call (the deployment name, not the model name). Required when aiProvider is 'azure'."
+        "description": "Name of the model deployment to call (the deployment name, not the model name). Required when aiProvider is \"azure\"."
       }
     },
     "azureOpenAiApiVersion": {
       "type": "string",
       "defaultValue": "2024-10-21",
       "metadata": {
-        "description": "Azure OpenAI API version."
+        "description": "Azure OpenAI API version"
       }
     },
     "azureOpenAiAccountName": {
@@ -88,21 +88,21 @@
       "type": "bool",
       "defaultValue": true,
       "metadata": {
-        "description": "Assign Cognitive Services OpenAI User to the function app on the Azure OpenAI account. Turn off if you assign the role yourself (the deployer needs Owner or User Access Administrator on the account)."
+        "description": "Assign Cognitive Services OpenAI User to the function app on the Azure OpenAI account. Turn off if you assign the role yourself (the deployer needs Owner or User Access Administrator on the account to assign it)."
       }
     },
     "repoUrl": {
       "type": "string",
       "defaultValue": "https://github.com/skirkpatrickMSFT/ScubaGearAnalyzer",
       "metadata": {
-        "description": "GitHub repository URL. Used for source control integration to deploy the function code."
+        "description": "GitHub repository URL. Not used by the template; retained so existing parameter files keep working."
       }
     },
     "repoBranch": {
       "type": "string",
       "defaultValue": "main",
       "metadata": {
-        "description": "Branch to deploy from."
+        "description": "Branch to deploy from. Not used by the template; retained so existing parameter files keep working."
       }
     },
     "allowedOrigins": {
@@ -110,6 +110,20 @@
       "defaultValue": "https://*.powerapps.com",
       "metadata": {
         "description": "Allowed CORS origins (Power Apps domain)"
+      }
+    },
+    "enablePrivateEndpoints": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "Put the storage accounts behind private endpoints: creates a VNet, integrates the function app with it, creates private DNS zones, and disables public network access on the function app's storage. Inbound access to the function app itself stays public so the Power Platform connector can reach it."
+      }
+    },
+    "vnetAddressPrefix": {
+      "type": "string",
+      "defaultValue": "10.40.0.0/24",
+      "metadata": {
+        "description": "Address space for the VNet (at least a /24). Only used when enablePrivateEndpoints is true."
       }
     },
     "createResultsStorage": {
@@ -123,21 +137,35 @@
       "type": "string",
       "defaultValue": "scubagear-output",
       "metadata": {
-        "description": "Name of the blob container created for ScubaGear results."
+        "description": "Name of the blob container created for ScubaGear results"
+      }
+    },
+    "resultsStorageAccountName": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Name for the results storage account that is CREATED when createResultsStorage is true (3-24 lowercase letters and digits, globally unique). Leave empty to auto-generate one."
+      }
+    },
+    "resultsStorageAllowedIpRanges": {
+      "type": "array",
+      "defaultValue": [],
+      "metadata": {
+        "description": "Public IPs or CIDR ranges allowed to reach the results storage account (e.g. where ScubaGear runs or where you upload from). With private endpoints enabled, leaving this empty disables public access to the results account entirely."
       }
     },
     "externalStorageAccountName": {
       "type": "string",
       "defaultValue": "",
       "metadata": {
-        "description": "Optional: name of an external storage account (e.g. for ScubaGear results) to grant Managed Identity read access. Leave empty to skip."
+        "description": "Optional: name of an EXISTING storage account (e.g. one ScubaConnect already writes to) to grant the function app's Managed Identity read access. This does not create the account; the deployment fails if it is not found. To have one created, use resultsStorageAccountName instead. Leave empty to skip."
       }
     },
     "externalStorageResourceGroup": {
       "type": "string",
       "defaultValue": "[resourceGroup().name]",
       "metadata": {
-        "description": "Optional: resource group of the external storage account. Defaults to this resource group."
+        "description": "Optional: resource group of the existing external storage account. Defaults to this resource group."
       }
     }
   },
@@ -145,12 +173,18 @@
     "uniqueSuffix": "[uniqueString(resourceGroup().id)]",
     "functionAppName": "[format('{0}-func-{1}', parameters('baseName'), variables('uniqueSuffix'))]",
     "storageName": "[replace(format('{0}st{1}', parameters('baseName'), variables('uniqueSuffix')), '-', '')]",
-    "resultsStorageName": "[take(toLower(replace(format('{0}res{1}', parameters('baseName'), variables('uniqueSuffix')), '-', '')), 24)]",
+    "resultsStorageName": "[if(not(empty(parameters('resultsStorageAccountName'))), toLower(parameters('resultsStorageAccountName')), take(toLower(replace(format('{0}res{1}', parameters('baseName'), variables('uniqueSuffix')), '-', '')), 24))]",
     "appServicePlanName": "[format('{0}-plan-{1}', parameters('baseName'), variables('uniqueSuffix'))]",
     "appInsightsName": "[format('{0}-ai-{1}', parameters('baseName'), variables('uniqueSuffix'))]",
-    "storageBlobDataReaderRoleId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '2a2b9908-6ea1-4ae2-8e65-a410df84e7d1')]",
     "azureOpenAiAccount": "[if(not(empty(parameters('azureOpenAiAccountName'))), parameters('azureOpenAiAccountName'), split(replace(replace(parameters('azureOpenAiEndpoint'), 'https://', ''), 'http://', ''), '.')[0])]",
-    "aiAppSettings": "[if(equals(parameters('aiProvider'), 'azure'), createArray(createObject('name', 'AI_PROVIDER', 'value', 'azure'), createObject('name', 'AZURE_OPENAI_ENDPOINT', 'value', parameters('azureOpenAiEndpoint')), createObject('name', 'AZURE_OPENAI_DEPLOYMENT', 'value', parameters('azureOpenAiDeployment')), createObject('name', 'AZURE_OPENAI_API_VERSION', 'value', parameters('azureOpenAiApiVersion'))), createArray(createObject('name', 'AI_PROVIDER', 'value', 'openai'), createObject('name', 'OPENAI_API_KEY', 'value', parameters('openAiApiKey'))))]"
+    "aiAppSettings": "[if(equals(parameters('aiProvider'), 'azure'), createArray(createObject('name', 'AI_PROVIDER', 'value', 'azure'), createObject('name', 'AZURE_OPENAI_ENDPOINT', 'value', parameters('azureOpenAiEndpoint')), createObject('name', 'AZURE_OPENAI_DEPLOYMENT', 'value', parameters('azureOpenAiDeployment')), createObject('name', 'AZURE_OPENAI_API_VERSION', 'value', parameters('azureOpenAiApiVersion'))), createArray(createObject('name', 'AI_PROVIDER', 'value', 'openai'), createObject('name', 'OPENAI_API_KEY', 'value', parameters('openAiApiKey'))))]",
+    "storageBlobDataReaderRoleId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '2a2b9908-6ea1-4ae2-8e65-a410df84e7d1')]",
+    "functionStorageRoleIds": [
+      "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'b7e6dc6d-f1e8-4753-8033-0f276bb0955b')]",
+      "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '974c5e8b-45b9-4653-ba55-5f855dd0fb88')]",
+      "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '0a9a7e1f-b9d0-4cc4-a60d-0319b160aaa3')]"
+    ],
+    "externalIsResultsAccount": "[and(and(parameters('createResultsStorage'), equals(toLower(parameters('externalStorageAccountName')), variables('resultsStorageName'))), equals(parameters('externalStorageResourceGroup'), resourceGroup().name))]"
   },
   "resources": [
     {
@@ -164,7 +198,15 @@
       "kind": "StorageV2",
       "properties": {
         "supportsHttpsTrafficOnly": true,
-        "minimumTlsVersion": "TLS1_2"
+        "minimumTlsVersion": "TLS1_2",
+        "allowBlobPublicAccess": false,
+        "allowSharedKeyAccess": false,
+        "defaultToOAuthAuthentication": true,
+        "publicNetworkAccess": "[if(parameters('enablePrivateEndpoints'), 'Disabled', 'Enabled')]",
+        "networkAcls": {
+          "defaultAction": "[if(parameters('enablePrivateEndpoints'), 'Deny', 'Allow')]",
+          "bypass": "AzureServices"
+        }
       },
       "tags": {
         "project": "ScubaGearAnalyzer",
@@ -235,14 +277,14 @@
       "properties": {
         "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', variables('appServicePlanName'))]",
         "httpsOnly": true,
+        "virtualNetworkSubnetId": "[if(parameters('enablePrivateEndpoints'), reference(resourceId('Microsoft.Resources/deployments', 'network'), '2025-04-01').outputs.functionSubnetId.value, null())]",
         "functionAppConfig": {
           "deployment": {
             "storage": {
               "type": "blobContainer",
               "value": "[format('{0}deploymentpackage', reference(resourceId('Microsoft.Storage/storageAccounts', variables('storageName')), '2023-05-01').primaryEndpoints.blob)]",
               "authentication": {
-                "type": "StorageAccountConnectionString",
-                "storageAccountConnectionStringName": "DEPLOYMENT_STORAGE_CONNECTION_STRING"
+                "type": "SystemAssignedIdentity"
               }
             }
           },
@@ -256,7 +298,7 @@
           }
         },
         "siteConfig": {
-          "appSettings": "[concat(createArray(createObject('name', 'AzureWebJobsStorage', 'value', format('DefaultEndpointsProtocol=https;AccountName={0};EndpointSuffix={1};AccountKey={2}', variables('storageName'), environment().suffixes.storage, listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('storageName')), '2023-05-01').keys[0].value)), createObject('name', 'DEPLOYMENT_STORAGE_CONNECTION_STRING', 'value', format('DefaultEndpointsProtocol=https;AccountName={0};EndpointSuffix={1};AccountKey={2}', variables('storageName'), environment().suffixes.storage, listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('storageName')), '2023-05-01').keys[0].value)), createObject('name', 'FUNCTIONS_EXTENSION_VERSION', 'value', '~4'), createObject('name', 'APPINSIGHTS_INSTRUMENTATIONKEY', 'value', reference(resourceId('Microsoft.Insights/components', variables('appInsightsName')), '2020-02-02').InstrumentationKey), createObject('name', 'APPLICATIONINSIGHTS_CONNECTION_STRING', 'value', reference(resourceId('Microsoft.Insights/components', variables('appInsightsName')), '2020-02-02').ConnectionString)), variables('aiAppSettings'))]",
+          "appSettings": "[concat(createArray(createObject('name', 'AzureWebJobsStorage__accountName', 'value', variables('storageName')), createObject('name', 'FUNCTIONS_EXTENSION_VERSION', 'value', '~4'), createObject('name', 'APPINSIGHTS_INSTRUMENTATIONKEY', 'value', reference(resourceId('Microsoft.Insights/components', variables('appInsightsName')), '2020-02-02').InstrumentationKey), createObject('name', 'APPLICATIONINSIGHTS_CONNECTION_STRING', 'value', reference(resourceId('Microsoft.Insights/components', variables('appInsightsName')), '2020-02-02').ConnectionString)), variables('aiAppSettings'))]",
           "cors": {
             "allowedOrigins": [
               "[parameters('allowedOrigins')]",
@@ -276,17 +318,23 @@
         "[resourceId('Microsoft.Insights/components', variables('appInsightsName'))]",
         "[resourceId('Microsoft.Web/serverfarms', variables('appServicePlanName'))]",
         "[resourceId('Microsoft.Storage/storageAccounts/blobServices/containers', variables('storageName'), 'default', 'deploymentpackage')]",
+        "[resourceId('Microsoft.Resources/deployments', 'functionStoragePrivateEndpoints')]",
+        "[resourceId('Microsoft.Resources/deployments', 'network')]",
         "[resourceId('Microsoft.Storage/storageAccounts', variables('storageName'))]"
       ]
     },
     {
+      "copy": {
+        "name": "functionStorageRoleAssignments",
+        "count": "[length(variables('functionStorageRoleIds'))]"
+      },
       "type": "Microsoft.Authorization/roleAssignments",
       "apiVersion": "2022-04-01",
       "scope": "[resourceId('Microsoft.Storage/storageAccounts', variables('storageName'))]",
-      "name": "[guid(resourceId('Microsoft.Storage/storageAccounts', variables('storageName')), resourceId('Microsoft.Web/sites', variables('functionAppName')), variables('storageBlobDataReaderRoleId'))]",
+      "name": "[guid(resourceId('Microsoft.Storage/storageAccounts', variables('storageName')), resourceId('Microsoft.Web/sites', variables('functionAppName')), variables('functionStorageRoleIds')[copyIndex()])]",
       "properties": {
         "principalId": "[reference(resourceId('Microsoft.Web/sites', variables('functionAppName')), '2024-04-01', 'full').identity.principalId]",
-        "roleDefinitionId": "[variables('storageBlobDataReaderRoleId')]",
+        "roleDefinitionId": "[variables('functionStorageRoleIds')[copyIndex()]]",
         "principalType": "ServicePrincipal"
       },
       "dependsOn": [
@@ -307,7 +355,24 @@
       "properties": {
         "supportsHttpsTrafficOnly": true,
         "minimumTlsVersion": "TLS1_2",
-        "allowBlobPublicAccess": false
+        "allowBlobPublicAccess": false,
+        "allowSharedKeyAccess": false,
+        "defaultToOAuthAuthentication": true,
+        "publicNetworkAccess": "[if(or(not(parameters('enablePrivateEndpoints')), not(empty(parameters('resultsStorageAllowedIpRanges')))), 'Enabled', 'Disabled')]",
+        "networkAcls": {
+          "copy": [
+            {
+              "name": "ipRules",
+              "count": "[length(parameters('resultsStorageAllowedIpRanges'))]",
+              "input": {
+                "value": "[parameters('resultsStorageAllowedIpRanges')[copyIndex('ipRules')]]",
+                "action": "Allow"
+              }
+            }
+          ],
+          "defaultAction": "[if(parameters('enablePrivateEndpoints'), 'Deny', 'Allow')]",
+          "bypass": "AzureServices"
+        }
       },
       "tags": {
         "project": "ScubaGearAnalyzer",
@@ -352,7 +417,456 @@
       ]
     },
     {
-      "condition": "[not(empty(parameters('externalStorageAccountName')))]",
+      "condition": "[parameters('enablePrivateEndpoints')]",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "network",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "baseName": {
+            "value": "[parameters('baseName')]"
+          },
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "uniqueSuffix": {
+            "value": "[variables('uniqueSuffix')]"
+          },
+          "vnetAddressPrefix": {
+            "value": "[parameters('vnetAddressPrefix')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.49.2.45890",
+              "templateHash": "10844395812926551814"
+            }
+          },
+          "parameters": {
+            "baseName": {
+              "type": "string",
+              "metadata": {
+                "description": "Base name used to derive resource names"
+              }
+            },
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Azure region"
+              }
+            },
+            "uniqueSuffix": {
+              "type": "string",
+              "metadata": {
+                "description": "Suffix that keeps names unique per resource group"
+              }
+            },
+            "vnetAddressPrefix": {
+              "type": "string",
+              "defaultValue": "10.40.0.0/24",
+              "metadata": {
+                "description": "Address space for the VNet. The function subnet takes the first /26 and the private endpoint subnet a /27 after it, so use at least a /24."
+              }
+            }
+          },
+          "variables": {
+            "vnetName": "[format('{0}-vnet-{1}', parameters('baseName'), parameters('uniqueSuffix'))]",
+            "storageServices": [
+              "blob",
+              "queue",
+              "table"
+            ]
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Network/virtualNetworks",
+              "apiVersion": "2024-05-01",
+              "name": "[variables('vnetName')]",
+              "location": "[parameters('location')]",
+              "properties": {
+                "addressSpace": {
+                  "addressPrefixes": [
+                    "[parameters('vnetAddressPrefix')]"
+                  ]
+                },
+                "subnets": [
+                  {
+                    "name": "snet-functions",
+                    "properties": {
+                      "addressPrefix": "[cidrSubnet(parameters('vnetAddressPrefix'), 26, 0)]",
+                      "delegations": [
+                        {
+                          "name": "flex-consumption",
+                          "properties": {
+                            "serviceName": "Microsoft.App/environments"
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "name": "snet-private-endpoints",
+                    "properties": {
+                      "addressPrefix": "[cidrSubnet(parameters('vnetAddressPrefix'), 27, 2)]"
+                    }
+                  }
+                ]
+              },
+              "tags": {
+                "project": "ScubaGearAnalyzer",
+                "component": "network"
+              }
+            },
+            {
+              "copy": {
+                "name": "zones",
+                "count": "[length(variables('storageServices'))]"
+              },
+              "type": "Microsoft.Network/privateDnsZones",
+              "apiVersion": "2024-06-01",
+              "name": "[format('privatelink.{0}.{1}', variables('storageServices')[copyIndex()], environment().suffixes.storage)]",
+              "location": "global",
+              "tags": {
+                "project": "ScubaGearAnalyzer",
+                "component": "network"
+              }
+            },
+            {
+              "copy": {
+                "name": "zoneLinks",
+                "count": "[length(variables('storageServices'))]"
+              },
+              "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
+              "apiVersion": "2024-06-01",
+              "name": "[format('{0}/{1}', format('privatelink.{0}.{1}', variables('storageServices')[copyIndex()], environment().suffixes.storage), format('{0}-link', variables('vnetName')))]",
+              "location": "global",
+              "properties": {
+                "registrationEnabled": false,
+                "virtualNetwork": {
+                  "id": "[resourceId('Microsoft.Network/virtualNetworks', variables('vnetName'))]"
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/virtualNetworks', variables('vnetName'))]",
+                "[resourceId('Microsoft.Network/privateDnsZones', format('privatelink.{0}.{1}', variables('storageServices')[copyIndex()], environment().suffixes.storage))]"
+              ]
+            }
+          ],
+          "outputs": {
+            "functionSubnetId": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.Network/virtualNetworks', variables('vnetName')), '2024-05-01').subnets[0].id]"
+            },
+            "privateEndpointSubnetId": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.Network/virtualNetworks', variables('vnetName')), '2024-05-01').subnets[1].id]"
+            },
+            "dnsZoneIds": {
+              "type": "object",
+              "value": {
+                "blob": "[resourceId('Microsoft.Network/privateDnsZones', format('privatelink.{0}.{1}', variables('storageServices')[0], environment().suffixes.storage))]",
+                "queue": "[resourceId('Microsoft.Network/privateDnsZones', format('privatelink.{0}.{1}', variables('storageServices')[1], environment().suffixes.storage))]",
+                "table": "[resourceId('Microsoft.Network/privateDnsZones', format('privatelink.{0}.{1}', variables('storageServices')[2], environment().suffixes.storage))]"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "condition": "[parameters('enablePrivateEndpoints')]",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "functionStoragePrivateEndpoints",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "storageAccountName": {
+            "value": "[variables('storageName')]"
+          },
+          "storageAccountId": {
+            "value": "[resourceId('Microsoft.Storage/storageAccounts', variables('storageName'))]"
+          },
+          "subnetId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'network'), '2025-04-01').outputs.privateEndpointSubnetId.value]"
+          },
+          "services": {
+            "value": [
+              "blob",
+              "queue",
+              "table"
+            ]
+          },
+          "dnsZoneIds": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'network'), '2025-04-01').outputs.dnsZoneIds.value]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.49.2.45890",
+              "templateHash": "17982108249186777205"
+            }
+          },
+          "parameters": {
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Azure region"
+              }
+            },
+            "storageAccountName": {
+              "type": "string",
+              "metadata": {
+                "description": "Name of the storage account"
+              }
+            },
+            "storageAccountId": {
+              "type": "string",
+              "metadata": {
+                "description": "Resource ID of the storage account"
+              }
+            },
+            "subnetId": {
+              "type": "string",
+              "metadata": {
+                "description": "Subnet that hosts the private endpoints"
+              }
+            },
+            "services": {
+              "type": "array",
+              "metadata": {
+                "description": "Storage services to expose privately: blob, queue and/or table"
+              }
+            },
+            "dnsZoneIds": {
+              "type": "object",
+              "metadata": {
+                "description": "Private DNS zone resource IDs keyed by service: { blob, queue, table }"
+              }
+            }
+          },
+          "resources": [
+            {
+              "copy": {
+                "name": "endpoints",
+                "count": "[length(parameters('services'))]"
+              },
+              "type": "Microsoft.Network/privateEndpoints",
+              "apiVersion": "2024-05-01",
+              "name": "[format('{0}-{1}-pe', parameters('storageAccountName'), parameters('services')[copyIndex()])]",
+              "location": "[parameters('location')]",
+              "properties": {
+                "subnet": {
+                  "id": "[parameters('subnetId')]"
+                },
+                "privateLinkServiceConnections": [
+                  {
+                    "name": "[format('{0}-{1}', parameters('storageAccountName'), parameters('services')[copyIndex()])]",
+                    "properties": {
+                      "privateLinkServiceId": "[parameters('storageAccountId')]",
+                      "groupIds": [
+                        "[parameters('services')[copyIndex()]]"
+                      ]
+                    }
+                  }
+                ]
+              },
+              "tags": {
+                "project": "ScubaGearAnalyzer",
+                "component": "private-endpoint"
+              }
+            },
+            {
+              "copy": {
+                "name": "dnsGroups",
+                "count": "[length(parameters('services'))]"
+              },
+              "type": "Microsoft.Network/privateEndpoints/privateDnsZoneGroups",
+              "apiVersion": "2024-05-01",
+              "name": "[format('{0}/{1}', format('{0}-{1}-pe', parameters('storageAccountName'), parameters('services')[copyIndex()]), 'default')]",
+              "properties": {
+                "privateDnsZoneConfigs": [
+                  {
+                    "name": "[parameters('services')[copyIndex()]]",
+                    "properties": {
+                      "privateDnsZoneId": "[parameters('dnsZoneIds')[parameters('services')[copyIndex()]]]"
+                    }
+                  }
+                ]
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/privateEndpoints', format('{0}-{1}-pe', parameters('storageAccountName'), parameters('services')[copyIndex()]))]"
+              ]
+            }
+          ]
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', 'network')]",
+        "[resourceId('Microsoft.Storage/storageAccounts', variables('storageName'))]"
+      ]
+    },
+    {
+      "condition": "[and(parameters('createResultsStorage'), parameters('enablePrivateEndpoints'))]",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "resultsStoragePrivateEndpoints",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "storageAccountName": {
+            "value": "[variables('resultsStorageName')]"
+          },
+          "storageAccountId": {
+            "value": "[resourceId('Microsoft.Storage/storageAccounts', variables('resultsStorageName'))]"
+          },
+          "subnetId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'network'), '2025-04-01').outputs.privateEndpointSubnetId.value]"
+          },
+          "services": {
+            "value": [
+              "blob"
+            ]
+          },
+          "dnsZoneIds": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'network'), '2025-04-01').outputs.dnsZoneIds.value]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.49.2.45890",
+              "templateHash": "17982108249186777205"
+            }
+          },
+          "parameters": {
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Azure region"
+              }
+            },
+            "storageAccountName": {
+              "type": "string",
+              "metadata": {
+                "description": "Name of the storage account"
+              }
+            },
+            "storageAccountId": {
+              "type": "string",
+              "metadata": {
+                "description": "Resource ID of the storage account"
+              }
+            },
+            "subnetId": {
+              "type": "string",
+              "metadata": {
+                "description": "Subnet that hosts the private endpoints"
+              }
+            },
+            "services": {
+              "type": "array",
+              "metadata": {
+                "description": "Storage services to expose privately: blob, queue and/or table"
+              }
+            },
+            "dnsZoneIds": {
+              "type": "object",
+              "metadata": {
+                "description": "Private DNS zone resource IDs keyed by service: { blob, queue, table }"
+              }
+            }
+          },
+          "resources": [
+            {
+              "copy": {
+                "name": "endpoints",
+                "count": "[length(parameters('services'))]"
+              },
+              "type": "Microsoft.Network/privateEndpoints",
+              "apiVersion": "2024-05-01",
+              "name": "[format('{0}-{1}-pe', parameters('storageAccountName'), parameters('services')[copyIndex()])]",
+              "location": "[parameters('location')]",
+              "properties": {
+                "subnet": {
+                  "id": "[parameters('subnetId')]"
+                },
+                "privateLinkServiceConnections": [
+                  {
+                    "name": "[format('{0}-{1}', parameters('storageAccountName'), parameters('services')[copyIndex()])]",
+                    "properties": {
+                      "privateLinkServiceId": "[parameters('storageAccountId')]",
+                      "groupIds": [
+                        "[parameters('services')[copyIndex()]]"
+                      ]
+                    }
+                  }
+                ]
+              },
+              "tags": {
+                "project": "ScubaGearAnalyzer",
+                "component": "private-endpoint"
+              }
+            },
+            {
+              "copy": {
+                "name": "dnsGroups",
+                "count": "[length(parameters('services'))]"
+              },
+              "type": "Microsoft.Network/privateEndpoints/privateDnsZoneGroups",
+              "apiVersion": "2024-05-01",
+              "name": "[format('{0}/{1}', format('{0}-{1}-pe', parameters('storageAccountName'), parameters('services')[copyIndex()]), 'default')]",
+              "properties": {
+                "privateDnsZoneConfigs": [
+                  {
+                    "name": "[parameters('services')[copyIndex()]]",
+                    "properties": {
+                      "privateDnsZoneId": "[parameters('dnsZoneIds')[parameters('services')[copyIndex()]]]"
+                    }
+                  }
+                ]
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/privateEndpoints', format('{0}-{1}-pe', parameters('storageAccountName'), parameters('services')[copyIndex()]))]"
+              ]
+            }
+          ]
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', 'network')]",
+        "[resourceId('Microsoft.Storage/storageAccounts', variables('resultsStorageName'))]"
+      ]
+    },
+    {
+      "condition": "[and(not(empty(parameters('externalStorageAccountName'))), not(variables('externalIsResultsAccount')))]",
       "type": "Microsoft.Resources/deployments",
       "apiVersion": "2025-04-01",
       "name": "externalStorageRbac",
@@ -376,8 +890,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.40.2.10011",
-              "templateHash": "13248384801947114368"
+              "version": "0.49.2.45890",
+              "templateHash": "10996304880699501508"
             }
           },
           "parameters": {
@@ -417,7 +931,7 @@
       ]
     },
     {
-      "condition": "[and(equals(parameters('aiProvider'), 'azure'), and(parameters('assignAzureOpenAiRole'), not(empty(variables('azureOpenAiAccount')))))]",
+      "condition": "[and(and(equals(parameters('aiProvider'), 'azure'), parameters('assignAzureOpenAiRole')), not(empty(variables('azureOpenAiAccount'))))]",
       "type": "Microsoft.Resources/deployments",
       "apiVersion": "2025-04-01",
       "name": "azureOpenAiRbac",
@@ -440,7 +954,11 @@
           "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
           "contentVersion": "1.0.0.0",
           "metadata": {
-            "description": "Grants Cognitive Services OpenAI User to the function app Managed Identity on an existing Azure OpenAI / AI Services account."
+            "_generator": {
+              "name": "bicep",
+              "version": "0.49.2.45890",
+              "templateHash": "8074357663747206707"
+            }
           },
           "parameters": {
             "accountName": {
@@ -480,18 +998,6 @@
     }
   ],
   "outputs": {
-    "aiProvider": {
-      "type": "string",
-      "value": "[parameters('aiProvider')]"
-    },
-    "resultsStorageAccountName": {
-      "type": "string",
-      "value": "[if(parameters('createResultsStorage'), variables('resultsStorageName'), '')]"
-    },
-    "resultsContainerName": {
-      "type": "string",
-      "value": "[if(parameters('createResultsStorage'), parameters('resultsContainerName'), '')]"
-    },
     "functionAppName": {
       "type": "string",
       "value": "[variables('functionAppName')]"
@@ -507,6 +1013,26 @@
     "appInsightsName": {
       "type": "string",
       "value": "[variables('appInsightsName')]"
+    },
+    "aiProvider": {
+      "type": "string",
+      "value": "[parameters('aiProvider')]"
+    },
+    "privateEndpointsEnabled": {
+      "type": "bool",
+      "value": "[parameters('enablePrivateEndpoints')]"
+    },
+    "resultsStorageAccountName": {
+      "type": "string",
+      "value": "[if(parameters('createResultsStorage'), variables('resultsStorageName'), '')]"
+    },
+    "resultsContainerName": {
+      "type": "string",
+      "value": "[if(parameters('createResultsStorage'), parameters('resultsContainerName'), '')]"
+    },
+    "resultsStorageAccountId": {
+      "type": "string",
+      "value": "[if(parameters('createResultsStorage'), resourceId('Microsoft.Storage/storageAccounts', variables('resultsStorageName')), '')]"
     }
   }
 }

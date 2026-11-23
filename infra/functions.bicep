@@ -1,15 +1,19 @@
 // ============================================================
 // ScubaGear Analyzer — Azure Functions Infrastructure
-// Deploys Azure Function App (Flex Consumption) + Storage
-// for the Power Platform backend (custom connector + Copilot
-// Studio agent).
+// Deploys the Azure Function App (Flex Consumption), its storage,
+// an optional ScubaGear results storage account, and (by default)
+// the VNet + private endpoints that keep storage off the public
+// internet. All storage access uses Managed Identity; no account
+// keys are created or used.
 // ============================================================
+
+metadata description = 'Deploys the ScubaGear Analyzer Azure Functions backend (Flex Consumption) with identity-based storage, private endpoints, Application Insights, an optional results storage account, and RBAC. After deployment, run the GitHub Actions workflow to deploy the function code, or run deploy-functions.ps1 locally.'
 
 targetScope = 'resourceGroup'
 
 // ── Parameters ─────────────────────────────────────────────
 
-@description('Base name used to derive resource names')
+@description('Base name used to derive resource names (e.g. scubagear → scubagear-func-xxxx)')
 param baseName string = 'scubagear'
 
 @description('Azure region for all resources')
@@ -47,8 +51,22 @@ param azureOpenAiSubscriptionId string = subscription().subscriptionId
 @description('Assign Cognitive Services OpenAI User to the function app on the Azure OpenAI account. Turn off if you assign the role yourself (the deployer needs Owner or User Access Administrator on the account to assign it).')
 param assignAzureOpenAiRole bool = true
 
+@description('GitHub repository URL. Not used by the template; retained so existing parameter files keep working.')
+#disable-next-line no-unused-params
+param repoUrl string = 'https://github.com/skirkpatrickMSFT/ScubaGearAnalyzer'
+
+@description('Branch to deploy from. Not used by the template; retained so existing parameter files keep working.')
+#disable-next-line no-unused-params
+param repoBranch string = 'main'
+
 @description('Allowed CORS origins (Power Apps domain)')
 param allowedOrigins string = 'https://*.powerapps.com'
+
+@description('Put the storage accounts behind private endpoints: creates a VNet, integrates the function app with it, creates private DNS zones, and disables public network access on the function app\'s storage. Inbound access to the function app itself stays public so the Power Platform connector can reach it.')
+param enablePrivateEndpoints bool = true
+
+@description('Address space for the VNet (at least a /24). Only used when enablePrivateEndpoints is true.')
+param vnetAddressPrefix string = '10.40.0.0/24'
 
 @description('Create a dedicated storage account and blob container for ScubaGear results, and grant the function app\'s Managed Identity read access. Turn off if you already have a results account (see externalStorageAccountName).')
 param createResultsStorage bool = true
@@ -56,10 +74,16 @@ param createResultsStorage bool = true
 @description('Name of the blob container created for ScubaGear results')
 param resultsContainerName string = 'scubagear-output'
 
-@description('Optional: name of an external storage account (e.g. for ScubaGear results) to grant the function app\'s Managed Identity read access. Leave empty to skip.')
+@description('Name for the results storage account that is CREATED when createResultsStorage is true (3-24 lowercase letters and digits, globally unique). Leave empty to auto-generate one.')
+param resultsStorageAccountName string = ''
+
+@description('Public IPs or CIDR ranges allowed to reach the results storage account (e.g. where ScubaGear runs or where you upload from). With private endpoints enabled, leaving this empty disables public access to the results account entirely.')
+param resultsStorageAllowedIpRanges array = []
+
+@description('Optional: name of an EXISTING storage account (e.g. one ScubaConnect already writes to) to grant the function app\'s Managed Identity read access. This does not create the account; the deployment fails if it is not found. To have one created, use resultsStorageAccountName instead. Leave empty to skip.')
 param externalStorageAccountName string = ''
 
-@description('Optional: resource group of the external storage account. Defaults to this resource group.')
+@description('Optional: resource group of the existing external storage account. Defaults to this resource group.')
 param externalStorageResourceGroup string = resourceGroup().name
 
 // ── Derived names ──────────────────────────────────────────
@@ -68,10 +92,11 @@ var uniqueSuffix = uniqueString(resourceGroup().id)
 var functionAppName = '${baseName}-func-${uniqueSuffix}'
 var storageName = replace('${baseName}st${uniqueSuffix}', '-', '')
 // Separate from the function app's own storage so results can be shared or locked down independently.
-var resultsStorageName = take(toLower(replace('${baseName}res${uniqueSuffix}', '-', '')), 24)
+var resultsStorageName = !empty(resultsStorageAccountName)
+  ? toLower(resultsStorageAccountName)
+  : take(toLower(replace('${baseName}res${uniqueSuffix}', '-', '')), 24)
 var appServicePlanName = '${baseName}-plan-${uniqueSuffix}'
 var appInsightsName = '${baseName}-ai-${uniqueSuffix}'
-var storageConnectionString = 'DefaultEndpointsProtocol=https;AccountName=${storageAccount.name};EndpointSuffix=${environment().suffixes.storage};AccountKey=${storageAccount.listKeys().keys[0].value}'
 
 var azureOpenAiAccount = !empty(azureOpenAiAccountName)
   ? azureOpenAiAccountName
@@ -89,7 +114,29 @@ var aiAppSettings = aiProvider == 'azure'
       { name: 'OPENAI_API_KEY', value: openAiApiKey }
     ]
 
+// Built-in roles
+var storageBlobDataReaderRoleId = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '2a2b9908-6ea1-4ae2-8e65-a410df84e7d1')
+// The Functions host needs blob (keys, leases, deployment package), queue and table access.
+var functionStorageRoleIds = [
+  subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'b7e6dc6d-f1e8-4753-8033-0f276bb0955b') // Storage Blob Data Owner
+  subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '974c5e8b-45b9-4653-ba55-5f855dd0fb88') // Storage Queue Data Contributor
+  subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '0a9a7e1f-b9d0-4cc4-a60d-0319b160aaa3') // Storage Table Data Contributor
+]
+
+// ── Network (private endpoints) ────────────────────────────
+
+module network 'network.bicep' = if (enablePrivateEndpoints) {
+  name: 'network'
+  params: {
+    baseName: baseName
+    location: location
+    uniqueSuffix: uniqueSuffix
+    vnetAddressPrefix: vnetAddressPrefix
+  }
+}
+
 // ── Storage Account (required by Azure Functions) ──────────
+// Identity-based only: shared key access is disabled, so no account keys exist to leak or rotate.
 
 resource storageAccount 'Microsoft.Storage/storageAccounts@2023-05-01' = {
   name: storageName
@@ -99,6 +146,14 @@ resource storageAccount 'Microsoft.Storage/storageAccounts@2023-05-01' = {
   properties: {
     supportsHttpsTrafficOnly: true
     minimumTlsVersion: 'TLS1_2'
+    allowBlobPublicAccess: false
+    allowSharedKeyAccess: false
+    defaultToOAuthAuthentication: true
+    publicNetworkAccess: enablePrivateEndpoints ? 'Disabled' : 'Enabled'
+    networkAcls: {
+      defaultAction: enablePrivateEndpoints ? 'Deny' : 'Allow'
+      bypass: 'AzureServices'
+    }
   }
   tags: {
     project: 'ScubaGearAnalyzer'
@@ -117,6 +172,22 @@ resource deploymentContainer 'Microsoft.Storage/storageAccounts/blobServices/con
   name: 'deploymentpackage'
   properties: {
     publicAccess: 'None'
+  }
+}
+
+module functionStoragePrivateEndpoints 'storage-private-endpoint.bicep' = if (enablePrivateEndpoints) {
+  name: 'functionStoragePrivateEndpoints'
+  params: {
+    location: location
+    storageAccountName: storageAccount.name
+    storageAccountId: storageAccount.id
+    subnetId: network!.outputs.privateEndpointSubnetId
+    services: [
+      'blob'
+      'queue'
+      'table'
+    ]
+    dnsZoneIds: network!.outputs.dnsZoneIds
   }
 }
 
@@ -167,14 +238,15 @@ resource functionApp 'Microsoft.Web/sites@2024-04-01' = {
   properties: {
     serverFarmId: appServicePlan.id
     httpsOnly: true
+    // Outbound traffic to private IPs (the storage private endpoints) goes through the VNet.
+    virtualNetworkSubnetId: enablePrivateEndpoints ? network!.outputs.functionSubnetId : null
     functionAppConfig: {
       deployment: {
         storage: {
           type: 'blobContainer'
           value: '${storageAccount.properties.primaryEndpoints.blob}deploymentpackage'
           authentication: {
-            type: 'StorageAccountConnectionString'
-            storageAccountConnectionStringName: 'DEPLOYMENT_STORAGE_CONNECTION_STRING'
+            type: 'SystemAssignedIdentity'
           }
         }
       }
@@ -190,12 +262,9 @@ resource functionApp 'Microsoft.Web/sites@2024-04-01' = {
     siteConfig: {
       appSettings: concat([
         {
-          name: 'AzureWebJobsStorage'
-          value: storageConnectionString
-        }
-        {
-          name: 'DEPLOYMENT_STORAGE_CONNECTION_STRING'
-          value: storageConnectionString
+          // Identity-based host storage connection (no key or connection string).
+          name: 'AzureWebJobsStorage__accountName'
+          value: storageAccount.name
         }
         {
           name: 'FUNCTIONS_EXTENSION_VERSION'
@@ -223,6 +292,7 @@ resource functionApp 'Microsoft.Web/sites@2024-04-01' = {
   }
   dependsOn: [
     deploymentContainer
+    functionStoragePrivateEndpoints
   ]
   tags: {
     project: 'ScubaGearAnalyzer'
@@ -230,20 +300,19 @@ resource functionApp 'Microsoft.Web/sites@2024-04-01' = {
   }
 }
 
-// ── RBAC: Storage Blob Data Reader on the built-in storage ─
+// ── RBAC: the function app's identity on its own storage ───
 
-@description('Storage Blob Data Reader built-in role')
-var storageBlobDataReaderRoleId = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '2a2b9908-6ea1-4ae2-8e65-a410df84e7d1')
-
-resource builtInStorageRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(storageAccount.id, functionApp.id, storageBlobDataReaderRoleId)
-  scope: storageAccount
-  properties: {
-    principalId: functionApp.identity.principalId
-    roleDefinitionId: storageBlobDataReaderRoleId
-    principalType: 'ServicePrincipal'
+resource functionStorageRoleAssignments 'Microsoft.Authorization/roleAssignments@2022-04-01' = [
+  for roleId in functionStorageRoleIds: {
+    name: guid(storageAccount.id, functionApp.id, roleId)
+    scope: storageAccount
+    properties: {
+      principalId: functionApp.identity.principalId
+      roleDefinitionId: roleId
+      principalType: 'ServicePrincipal'
+    }
   }
-}
+]
 
 // ── Results storage (optional): account + container for ScubaGear output ─
 
@@ -256,6 +325,20 @@ resource resultsStorage 'Microsoft.Storage/storageAccounts@2023-05-01' = if (cre
     supportsHttpsTrafficOnly: true
     minimumTlsVersion: 'TLS1_2'
     allowBlobPublicAccess: false
+    allowSharedKeyAccess: false
+    defaultToOAuthAuthentication: true
+    // With private endpoints the account is private unless specific IPs are allowed.
+    publicNetworkAccess: (!enablePrivateEndpoints || !empty(resultsStorageAllowedIpRanges)) ? 'Enabled' : 'Disabled'
+    networkAcls: {
+      defaultAction: enablePrivateEndpoints ? 'Deny' : 'Allow'
+      bypass: 'AzureServices'
+      ipRules: [
+        for range in resultsStorageAllowedIpRanges: {
+          value: range
+          action: 'Allow'
+        }
+      ]
+    }
   }
   tags: {
     project: 'ScubaGearAnalyzer'
@@ -276,6 +359,20 @@ resource resultsContainer 'Microsoft.Storage/storageAccounts/blobServices/contai
   }
 }
 
+module resultsStoragePrivateEndpoints 'storage-private-endpoint.bicep' = if (createResultsStorage && enablePrivateEndpoints) {
+  name: 'resultsStoragePrivateEndpoints'
+  params: {
+    location: location
+    storageAccountName: resultsStorage.name
+    storageAccountId: resultsStorage.id
+    subnetId: network!.outputs.privateEndpointSubnetId
+    services: [
+      'blob'
+    ]
+    dnsZoneIds: network!.outputs.dnsZoneIds
+  }
+}
+
 resource resultsStorageRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (createResultsStorage) {
   name: guid(resultsStorage.id, functionApp.id, storageBlobDataReaderRoleId)
   scope: resultsStorage
@@ -288,7 +385,10 @@ resource resultsStorageRoleAssignment 'Microsoft.Authorization/roleAssignments@2
 
 // ── RBAC: Storage Blob Data Reader on external storage (optional) ─
 
-module externalStorageRbac 'external-storage-rbac.bicep' = if (!empty(externalStorageAccountName)) {
+// Skip when it names the account this deployment just created: that role is already assigned above.
+var externalIsResultsAccount = createResultsStorage && toLower(externalStorageAccountName) == resultsStorageName && externalStorageResourceGroup == resourceGroup().name
+
+module externalStorageRbac 'external-storage-rbac.bicep' = if (!empty(externalStorageAccountName) && !externalIsResultsAccount) {
   name: 'externalStorageRbac'
   scope: resourceGroup(externalStorageResourceGroup)
   params: {
@@ -315,6 +415,7 @@ output functionAppUrl string = 'https://${functionApp.properties.defaultHostName
 output functionAppResourceId string = functionApp.id
 output appInsightsName string = appInsights.name
 output aiProvider string = aiProvider
+output privateEndpointsEnabled bool = enablePrivateEndpoints
 output resultsStorageAccountName string = createResultsStorage ? resultsStorage.name : ''
 output resultsContainerName string = createResultsStorage ? resultsContainerName : ''
 output resultsStorageAccountId string = createResultsStorage ? resultsStorage.id : ''

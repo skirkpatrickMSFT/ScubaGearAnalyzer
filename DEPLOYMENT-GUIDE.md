@@ -169,28 +169,56 @@ methods:
 
 | Method | When to use | Setup |
 |--------|-------------|-------|
-| **SAS Token** | Quick testing, cross-tenant access | Pass a `sasToken` parameter in each request |
+| **SAS Token** | Quick testing, cross-tenant access, or users who should not rely on the app's identity | Pass a `sasToken` parameter in each request. On the results account created by the template it must be a **user-delegation SAS** (shared-key access is disabled there); account-key SAS tokens work only against external accounts that allow shared keys |
 | **Managed Identity** | Production, same-tenant | Omit `sasToken` — the function app uses its system-assigned identity |
 
 Managed Identity is enabled automatically during deployment. The deployment also
 **creates a dedicated results storage account and a private `scubagear-output` container**
-for ScubaGear output, and grants the function app **Storage Blob Data Reader** on it (and on its
-own storage account). The account and container names are shown in the deployment summary and
+for ScubaGear output, and grants the function app **Storage Blob Data Reader** on it. The function app's own
+storage uses identity-based connections (no account keys), with the identity holding the Blob/Queue/Table data roles. Both accounts
+sit behind private endpoints by default. The account and container names are shown in the deployment summary and
 in the template outputs `resultsStorageAccountName` / `resultsContainerName` — enter them on the
 Power App's **Load from Storage** screen with *Use Managed Identity* turned on.
 
 | Parameter | Effect |
 |-----------|--------|
 | `-SkipResultsStorage` (template: `createResultsStorage = false`) | Don't create the account/container, e.g. when you already have one |
+| `-ResultsStorageAccountName` (template: `resultsStorageAccountName`) | Name of the account that is created (3-24 lowercase letters/digits, globally unique). Auto-generated if omitted |
 | `-ResultsContainerName` (template: `resultsContainerName`) | Container name. Default `scubagear-output` |
+| `-DisablePrivateEndpoints` (template: `enablePrivateEndpoints = false`) | Skip the VNet and private endpoints |
+| `-ResultsStorageAllowedIpRanges` (template: `resultsStorageAllowedIpRanges`) | Public IPs/CIDRs allowed to reach the results account. With private endpoints on and none given, the account is reachable only privately |
+| `-VnetAddressPrefix` (template: `vnetAddressPrefix`) | VNet address space, at least a /24. Default `10.40.0.0/24` |
 
-To get results into it, point ScubaConnect (or any scheduled ScubaGear run) at the container, or upload a file
-yourself. Uploading needs **Storage Blob Data Contributor** on the account for your own user:
+Both storage accounts use **identity-only access** (no account keys) and, by default, **private endpoints**, so the
+deployment complies with Azure Baseline Security Mode. The function app's identity is given the data-plane roles it
+needs. See the README's *Security and networking* section for details.
+
+To get results into the results account, point ScubaConnect (or any scheduled ScubaGear run) at the container, or
+upload a file yourself. Uploading needs **Storage Blob Data Contributor** on the account for your own user, and — with
+private endpoints on — your public IP in `-ResultsStorageAllowedIpRanges`:
 
 ```powershell
 az storage blob upload --auth-mode login --account-name <results-account> `
     -c scubagear-output -f ScubaResults.json -n ScubaResults.json
 ```
+
+#### Creating a SAS token for the results account
+
+Shared-key access is disabled, so create a **user-delegation SAS**, which is signed with your Entra ID credentials.
+Paste the result into the Power App's SAS Token field. The app needs only read + list on the container:
+
+```powershell
+$expiry = (Get-Date).AddDays(6).ToString("yyyy-MM-ddTHH:mmZ")   # user-delegation SAS lasts at most 7 days
+az storage container generate-sas --as-user --auth-mode login `
+    --account-name <results-account> --name scubagear-output `
+    --permissions rl --expiry $expiry --https-only --output tsv
+```
+
+You need **Storage Blob Delegator** plus **Storage Blob Data Reader** (or Contributor) on the account. Requesting a
+user-delegation key is a call to the account's blob endpoint, so it has to run from somewhere that can reach the
+private endpoint (a VM or VPN/ExpressRoute-connected network in or peered to the VNet). Run from anywhere else, it fails
+with a network error while public access is disabled. Using the function app's Managed Identity (leave the SAS field
+empty) needs none of this.
 
 To grant access to a storage account you already have (e.g., where ScubaGear
 uploads results), re-run the deployment with:

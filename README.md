@@ -13,7 +13,7 @@ Baseline control data is **generated directly from the CISA baselines** at a pin
 | Component | Description |
 |-----------|-------------|
 | `azure-functions/` | TypeScript Azure Functions backend — JSON parsing, baseline lookups and change history, Learn docs, storage integration, GPT-4o chat (14 endpoints) |
-| `infra/` | Bicep deployment templates (`functions.bicep`, `external-storage-rbac.bicep`, `external-openai-rbac.bicep`) — creates the Function App, its storage, a results storage account + container, and Application Insights |
+| `infra/` | Bicep deployment templates (`functions.bicep`, `network.bicep`, `storage-private-endpoint.bicep`, `external-storage-rbac.bicep`, `external-openai-rbac.bicep`) — creates the Function App with identity-based storage, a results storage account + container, private endpoints, and Application Insights. `azuredeploy.json` is generated from `functions.bicep` with `az bicep build --file infra/functions.bicep --outfile azuredeploy.json` — do not edit it by hand |
 | `power-apps/` | Power Apps canvas app — pre-built `.msapp` export + step-by-step build guide + source files |
 | `copilot-studio/` | Copilot Studio agent definition *(optional — alternative chat interface)* |
 | `deploy-functions.ps1` | One-click Azure Functions deployment script |
@@ -72,7 +72,9 @@ Two deployment paths:
    - **Ai Provider**: `openai` (default) or `azure`
    - For `openai`: **OpenAI Api Key** — your GPT-4o key
    - For `azure`: **Azure Open Ai Endpoint** and **Azure Open Ai Deployment** — see [Using Azure OpenAI](#using-azure-openai-instead-of-an-openai-key)
-   - **Create Results Storage** (default on): creates a storage account and a private `scubagear-output` container for ScubaGear results, readable by the function app's Managed Identity; the names appear under **Outputs**
+   - **Create Results Storage** (default on): creates a storage account and a private `scubagear-output` container for ScubaGear results, readable by the function app's Managed Identity; the names appear under **Outputs**. Set **Results Storage Account Name** to choose the name of the account that gets created
+   - **Existing storage** (only if you already have a results account): use **External Storage Account Name**. It must already exist; it is never created
+   - **Enable Private Endpoints** (default on): see [Security and networking](#security-and-networking)
    - Leave other defaults as-is
 3. Click **Review + create** → **Create**
 4. After deployment completes (~3 minutes), go to **Outputs** to get your Function App name and URL
@@ -127,6 +129,38 @@ app authenticates with its system-assigned Managed Identity, so no API key is st
 
 Role assignments can take a few minutes to take effect, so the first chat request after deployment may fail with a 401/403.
 For local development, `az login` is used automatically; set `AZURE_OPENAI_API_KEY` only if you need a key.
+
+### Security and networking
+
+The deployment is built to satisfy the Azure Baseline Security Mode policies (deny shared-key access, public blob
+access, insecure transfer and old TLS on storage accounts):
+
+- **Managed Identity everywhere, no account keys.** Both storage accounts have shared-key access disabled. The
+  function app reaches its own storage through identity-based connections (`AzureWebJobsStorage__accountName`
+  and a system-assigned identity for the Flex Consumption deployment package) and holds the *Storage Blob Data
+  Owner*, *Queue Data Contributor* and *Table Data Contributor* roles on it. Results storage is read with
+  *Storage Blob Data Reader*.
+- **Private endpoints (default on).** A VNet is created with a subnet delegated to the function app and a subnet for
+  private endpoints; blob, queue and table endpoints (and matching private DNS zones) are added for the function
+  app's storage, and a blob endpoint for the results account. Public network access is disabled on the function
+  app's storage. The results account is private too unless you allow specific IPs with
+  `resultsStorageAllowedIpRanges` / `-ResultsStorageAllowedIpRanges` (needed for anything outside the VNet that must
+  write to it, such as ScubaConnect or your own uploads).
+- **Inbound access to the function app stays public** (protected by its function key) because the Power Platform
+  custom connector calls it from the internet. Only its storage traffic is private.
+- Set `enablePrivateEndpoints = false` / `-DisablePrivateEndpoints` to skip the VNet and endpoints. Storage still
+  uses identities only, but is reachable over the public network.
+
+Because shared-key access is off (required by Azure Baseline Security Mode), **account-key SAS tokens do not work
+against the results account**. **User-delegation SAS tokens do** — they are signed with Entra ID instead of an
+account key, and the app accepts them in the SAS field exactly like any other SAS. The function app reaches the
+account over its private endpoint, so public network access can stay disabled. See
+[DEPLOYMENT-GUIDE.md](DEPLOYMENT-GUIDE.md#storage-authentication) for how to create one. Account-key SAS tokens
+still work for external accounts you point the app at.
+
+Chat against an Azure OpenAI account behind its own private endpoint is out of scope for this template: the
+function app's VNet integration routes private (RFC 1918) traffic through the VNet, so that account must be
+reachable from this VNet (for example via peering).
 
 ### 3. Create Custom Connector
 

@@ -47,8 +47,25 @@
     account plus a private container are created for ScubaGear output, and the function app's
     Managed Identity is granted Storage Blob Data Reader on it.
 
+.PARAMETER DisablePrivateEndpoints
+    Do not create the VNet, private DNS zones and private endpoints. Storage is still
+    identity-only (no account keys) but is reachable over the public network.
+
+.PARAMETER VnetAddressPrefix
+    Address space for the VNet (at least a /24). Default: 10.40.0.0/24.
+
+.PARAMETER ResultsStorageAllowedIpRanges
+    Public IPs or CIDR ranges allowed to reach the results storage account, for example where
+    ScubaGear runs or where you upload from. With private endpoints enabled (the default) and
+    no ranges, the results account is reachable only through its private endpoint.
+
 .PARAMETER ResultsContainerName
     Name of the results container. Default: scubagear-output.
+
+.PARAMETER ResultsStorageAccountName
+    Name for the results storage account that is created (3-24 lowercase letters/digits,
+    globally unique). Defaults to an auto-generated name. To use a storage account that already
+    exists instead, pass -SkipResultsStorage and -ExternalStorageAccountName.
 
 .EXAMPLE
     .\deploy-functions.ps1 -ResourceGroupName rg-scubagear-functions -Location eastus
@@ -81,11 +98,23 @@ param(
     [Parameter(HelpMessage = "Name of the blob container created for ScubaGear results. Default: scubagear-output.")]
     [string]$ResultsContainerName = "scubagear-output",
 
-    [Parameter(HelpMessage = "Optional: external storage account name to grant the function app Managed Identity read access (e.g. for ScubaGear results).")]
+    [Parameter(HelpMessage = "Name for the results storage account that is CREATED (3-24 lowercase letters/digits, globally unique). Leave empty to auto-generate.")]
+    [string]$ResultsStorageAccountName = "",
+
+    [Parameter(HelpMessage = "Optional: name of an EXISTING storage account to grant the function app Managed Identity read access. Does not create it; use -ResultsStorageAccountName for that.")]
     [string]$ExternalStorageAccountName = "",
 
     [Parameter(HelpMessage = "Optional: resource group of the external storage account. Defaults to ResourceGroupName.")]
-    [string]$ExternalStorageResourceGroup = ""
+    [string]$ExternalStorageResourceGroup = "",
+
+    [Parameter(HelpMessage = "Do not create the VNet and private endpoints. Storage stays identity-only but is reachable over the public network.")]
+    [switch]$DisablePrivateEndpoints,
+
+    [Parameter(HelpMessage = "Address space for the VNet (at least a /24). Default: 10.40.0.0/24.")]
+    [string]$VnetAddressPrefix = "10.40.0.0/24",
+
+    [Parameter(HelpMessage = "Public IPs/CIDRs allowed to reach the results storage account (e.g. where ScubaGear runs or you upload from). With private endpoints on, leaving this empty keeps the account private.")]
+    [string[]]$ResultsStorageAllowedIpRanges = @()
 )
 
 Set-StrictMode -Version Latest
@@ -157,35 +186,59 @@ Write-OK "Resource group ready"
 
 # ── Deploy Bicep ────────────────────────────────────────────
 Write-Step "Deploying Azure Functions infrastructure via Bicep"
-$bicepParams = @(
-    "baseName=$BaseName",
-    "aiProvider=$AiProvider",
-    "createResultsStorage=$((-not $SkipResultsStorage).ToString().ToLower())",
-    "resultsContainerName=$ResultsContainerName"
-)
+$deployParams = [ordered]@{
+    baseName               = $BaseName
+    aiProvider             = $AiProvider
+    createResultsStorage   = (-not $SkipResultsStorage.IsPresent)
+    resultsContainerName   = $ResultsContainerName
+    enablePrivateEndpoints = (-not $DisablePrivateEndpoints.IsPresent)
+    vnetAddressPrefix      = $VnetAddressPrefix
+}
+if (-not [string]::IsNullOrWhiteSpace($ResultsStorageAccountName)) {
+    $deployParams.resultsStorageAccountName = $ResultsStorageAccountName
+}
+if ($ResultsStorageAllowedIpRanges.Count -gt 0) {
+    $deployParams.resultsStorageAllowedIpRanges = @($ResultsStorageAllowedIpRanges)
+}
 if ($AiProvider -eq "azure") {
-    $bicepParams += "azureOpenAiEndpoint=$AzureOpenAiEndpoint"
-    $bicepParams += "azureOpenAiDeployment=$AzureOpenAiDeployment"
+    $deployParams.azureOpenAiEndpoint   = $AzureOpenAiEndpoint
+    $deployParams.azureOpenAiDeployment = $AzureOpenAiDeployment
     if (-not [string]::IsNullOrWhiteSpace($AzureOpenAiAccountName)) {
-        $bicepParams += "azureOpenAiAccountName=$AzureOpenAiAccountName"
+        $deployParams.azureOpenAiAccountName = $AzureOpenAiAccountName
     }
-    $aoaiRg = if ([string]::IsNullOrWhiteSpace($AzureOpenAiResourceGroup)) { $ResourceGroupName } else { $AzureOpenAiResourceGroup }
-    $bicepParams += "azureOpenAiResourceGroup=$aoaiRg"
-    $bicepParams += "assignAzureOpenAiRole=$((-not $SkipAzureOpenAiRoleAssignment).ToString().ToLower())"
+    $deployParams.azureOpenAiResourceGroup = if ([string]::IsNullOrWhiteSpace($AzureOpenAiResourceGroup)) { $ResourceGroupName } else { $AzureOpenAiResourceGroup }
+    $deployParams.assignAzureOpenAiRole    = (-not $SkipAzureOpenAiRoleAssignment.IsPresent)
 }
 else {
-    $bicepParams += "openAiApiKey=$OpenAiApiKey"
+    $deployParams.openAiApiKey = $OpenAiApiKey
 }
 if (-not [string]::IsNullOrWhiteSpace($ExternalStorageAccountName)) {
-    $bicepParams += "externalStorageAccountName=$ExternalStorageAccountName"
-    $extRg = if ([string]::IsNullOrWhiteSpace($ExternalStorageResourceGroup)) { $ResourceGroupName } else { $ExternalStorageResourceGroup }
-    $bicepParams += "externalStorageResourceGroup=$extRg"
+    $deployParams.externalStorageAccountName = $ExternalStorageAccountName
+    $deployParams.externalStorageResourceGroup = if ([string]::IsNullOrWhiteSpace($ExternalStorageResourceGroup)) { $ResourceGroupName } else { $ExternalStorageResourceGroup }
 }
-$deployResult = az deployment group create `
-    --resource-group $ResourceGroupName `
-    --template-file "infra/functions.bicep" `
-    --parameters $bicepParams `
-    --output json | ConvertFrom-Json
+
+# A parameters file handles array values and keeps the OpenAI key off the process command line.
+$paramsFile = Join-Path ([System.IO.Path]::GetTempPath()) "scubagear-deploy-$([guid]::NewGuid().ToString('N')).json"
+$paramsDoc = [ordered]@{
+    '$schema'      = "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#"
+    contentVersion = "1.0.0.0"
+    parameters     = [ordered]@{}
+}
+foreach ($key in $deployParams.Keys) { $paramsDoc.parameters[$key] = @{ value = $deployParams[$key] } }
+$paramsDoc | ConvertTo-Json -Depth 6 | Set-Content -Path $paramsFile -Encoding UTF8
+
+try {
+    $deployJson = az deployment group create `
+        --resource-group $ResourceGroupName `
+        --template-file "infra/functions.bicep" `
+        --parameters "@$paramsFile" `
+        --output json
+    if ($LASTEXITCODE -ne 0) { throw "Infrastructure deployment failed. See the error above." }
+    $deployResult = $deployJson | ConvertFrom-Json
+}
+finally {
+    Remove-Item $paramsFile -Force -ErrorAction SilentlyContinue
+}
 
 $funcAppName = $deployResult.properties.outputs.functionAppName.value
 $funcAppUrl  = $deployResult.properties.outputs.functionAppUrl.value
@@ -251,6 +304,10 @@ Write-Host "     The function app can read blobs without a SAS token from:" -For
 Write-Host "     - Its own storage account (auto-configured)" -ForegroundColor White
 if ($resultsAccount) {
     Write-Host "     - Results storage: $resultsAccount / $resultsContainer (created, RBAC assigned)" -ForegroundColor White
+    if ((-not $DisablePrivateEndpoints) -and $ResultsStorageAllowedIpRanges.Count -eq 0) {
+        Write-Host "       It is private (no public access). To upload from your machine, re-run with" -ForegroundColor DarkGray
+        Write-Host "       -ResultsStorageAllowedIpRanges <your-public-ip>, or write to it from inside the VNet." -ForegroundColor DarkGray
+    }
     Write-Host "       Point ScubaConnect (or upload ScubaResults.json) at this container. To upload manually:" -ForegroundColor DarkGray
     Write-Host "       az storage blob upload --auth-mode login --account-name $resultsAccount -c $resultsContainer -f ScubaResults.json -n ScubaResults.json" -ForegroundColor DarkGray
     Write-Host "       (uploading needs 'Storage Blob Data Contributor' on the account for your own user)" -ForegroundColor DarkGray
