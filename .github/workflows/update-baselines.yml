@@ -41,15 +41,23 @@ jobs:
             TAG=$(gh release view --repo cisagov/ScubaGear --json tagName -q .tagName)
           fi
           CURRENT=$(node -p "require('./scubagear-version.json').tag" 2>/dev/null || echo "none")
+          # Scheduled runs only act on a new release; a manual run always regenerates.
+          if [ "$TAG" != "$CURRENT" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "needed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+          fi
           echo "tag=$TAG"       >> "$GITHUB_OUTPUT"
           echo "current=$CURRENT" >> "$GITHUB_OUTPUT"
           echo "Pinned: $CURRENT / Upstream: $TAG"
 
       - name: Install dependencies
+        if: steps.target.outputs.needed == 'true'
         run: npm ci
 
       - name: Regenerate baselines
         id: generate
+        if: steps.target.outputs.needed == 'true'
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
@@ -67,11 +75,13 @@ jobs:
           rm -f gen.log
 
       - name: Build and test
+        if: steps.target.outputs.needed == 'true'
         run: |
           npm run build
           npm test
 
       - name: Open pull request
+        if: steps.target.outputs.needed == 'true'
         uses: peter-evans/create-pull-request@v6
         with:
           branch: chore/scubagear-${{ steps.target.outputs.tag }}
