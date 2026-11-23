@@ -876,7 +876,7 @@ Set(varIsLoaded, true)
 | Button does nothing when clicked | Check the **OnSelect** property is set (not the **Text** property). Click the property dropdown in the formula bar. |
 | Gallery shows "No items" | Make sure you clicked **Analyse Results** first. The collections are empty until you parse JSON. |
 | Remediation returns blank | The control ID may not be in the baseline data. Try MS.AAD.1.1v1 first. |
-| Chat returns error | Check that the OPENAI_API_KEY is set on your Azure Function App. |
+| Chat returns error | Check that the AI provider is configured on your Azure Function App: `OPENAI_API_KEY`, or `AI_PROVIDER=azure` with `AZURE_OPENAI_ENDPOINT` and `AZURE_OPENAI_DEPLOYMENT`. For Azure OpenAI, confirm the function app's identity has *Cognitive Services OpenAI User* on the account (role changes can take a few minutes). |
 | Storage "Access denied" | SAS token may be expired or missing List+Read permissions. Generate a new SAS token with `rl` (read + list) permissions on the blob container. Or switch to Managed Identity mode. |
 | Storage "Server failed to authenticate" (MI mode) | The function app’s Managed Identity doesn't have **Storage Blob Data Reader** on the target storage account. See [DEPLOYMENT-GUIDE.md](../DEPLOYMENT-GUIDE.md) Phase 3 → Storage authentication. |
 | Storage "Container not found" | Verify the storage account name and container name are spelled correctly. |

@@ -204,7 +204,7 @@ Write-Host "    test-subset.json     — Sample test data" -ForegroundColor Whit
 Write-Host ""
 Write-Host "  Deployment:" -ForegroundColor Yellow
 Write-Host "    1. Unzip to a folder" -ForegroundColor White
-Write-Host "    2. Copy .env.example to .env, add your OpenAI key" -ForegroundColor White
+Write-Host "    2. Copy .env.example to .env, add your OpenAI key (or Azure OpenAI settings)" -ForegroundColor White
 Write-Host "    3. Run: .\deploy-functions.ps1 -ResourceGroupName <rg-name>" -ForegroundColor White
 Write-Host "    4. Follow POWER-PLATFORM-DEPLOY.md for Power Apps setup" -ForegroundColor White
 Write-Host "    5. Follow power-apps/README.md to build the canvas app" -ForegroundColor White

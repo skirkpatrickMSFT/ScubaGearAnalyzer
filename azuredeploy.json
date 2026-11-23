@@ -24,10 +24,71 @@
         "description": "Azure region for all resources"
       }
     },
+    "aiProvider": {
+      "type": "string",
+      "defaultValue": "openai",
+      "allowedValues": [
+        "openai",
+        "azure"
+      ],
+      "metadata": {
+        "description": "Chat model provider: 'openai' (OpenAI API key) or 'azure' (Azure OpenAI / Azure AI Foundry, authenticated with the function app Managed Identity)."
+      }
+    },
     "openAiApiKey": {
       "type": "securestring",
+      "defaultValue": "",
       "metadata": {
-        "description": "OpenAI API key for GPT-4o chat integration (get one at https://platform.openai.com)"
+        "description": "OpenAI API key for GPT-4o chat (get one at https://platform.openai.com). Required when aiProvider is 'openai'; leave empty for 'azure'."
+      }
+    },
+    "azureOpenAiEndpoint": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Azure OpenAI endpoint, e.g. https://<resource>.openai.azure.com. Required when aiProvider is 'azure'."
+      }
+    },
+    "azureOpenAiDeployment": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Name of the model deployment to call (the deployment name, not the model name). Required when aiProvider is 'azure'."
+      }
+    },
+    "azureOpenAiApiVersion": {
+      "type": "string",
+      "defaultValue": "2024-10-21",
+      "metadata": {
+        "description": "Azure OpenAI API version."
+      }
+    },
+    "azureOpenAiAccountName": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Name of the existing Azure OpenAI / AI Services account, used to grant the Managed Identity access. Defaults to the first label of the endpoint host."
+      }
+    },
+    "azureOpenAiResourceGroup": {
+      "type": "string",
+      "defaultValue": "[resourceGroup().name]",
+      "metadata": {
+        "description": "Resource group of the Azure OpenAI account. Defaults to this resource group."
+      }
+    },
+    "azureOpenAiSubscriptionId": {
+      "type": "string",
+      "defaultValue": "[subscription().subscriptionId]",
+      "metadata": {
+        "description": "Subscription of the Azure OpenAI account. Defaults to this subscription."
+      }
+    },
+    "assignAzureOpenAiRole": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "Assign Cognitive Services OpenAI User to the function app on the Azure OpenAI account. Turn off if you assign the role yourself (the deployer needs Owner or User Access Administrator on the account)."
       }
     },
     "repoUrl": {
@@ -51,6 +112,20 @@
         "description": "Allowed CORS origins (Power Apps domain)"
       }
     },
+    "createResultsStorage": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "Create a dedicated storage account and blob container for ScubaGear results, and grant the function app's Managed Identity read access. Turn off if you already have a results account (see externalStorageAccountName)."
+      }
+    },
+    "resultsContainerName": {
+      "type": "string",
+      "defaultValue": "scubagear-output",
+      "metadata": {
+        "description": "Name of the blob container created for ScubaGear results."
+      }
+    },
     "externalStorageAccountName": {
       "type": "string",
       "defaultValue": "",
@@ -70,9 +145,12 @@
     "uniqueSuffix": "[uniqueString(resourceGroup().id)]",
     "functionAppName": "[format('{0}-func-{1}', parameters('baseName'), variables('uniqueSuffix'))]",
     "storageName": "[replace(format('{0}st{1}', parameters('baseName'), variables('uniqueSuffix')), '-', '')]",
+    "resultsStorageName": "[take(toLower(replace(format('{0}res{1}', parameters('baseName'), variables('uniqueSuffix')), '-', '')), 24)]",
     "appServicePlanName": "[format('{0}-plan-{1}', parameters('baseName'), variables('uniqueSuffix'))]",
     "appInsightsName": "[format('{0}-ai-{1}', parameters('baseName'), variables('uniqueSuffix'))]",
-    "storageBlobDataReaderRoleId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '2a2b9908-6ea1-4ae2-8e65-a410df84e7d1')]"
+    "storageBlobDataReaderRoleId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '2a2b9908-6ea1-4ae2-8e65-a410df84e7d1')]",
+    "azureOpenAiAccount": "[if(not(empty(parameters('azureOpenAiAccountName'))), parameters('azureOpenAiAccountName'), split(replace(replace(parameters('azureOpenAiEndpoint'), 'https://', ''), 'http://', ''), '.')[0])]",
+    "aiAppSettings": "[if(equals(parameters('aiProvider'), 'azure'), createArray(createObject('name', 'AI_PROVIDER', 'value', 'azure'), createObject('name', 'AZURE_OPENAI_ENDPOINT', 'value', parameters('azureOpenAiEndpoint')), createObject('name', 'AZURE_OPENAI_DEPLOYMENT', 'value', parameters('azureOpenAiDeployment')), createObject('name', 'AZURE_OPENAI_API_VERSION', 'value', parameters('azureOpenAiApiVersion'))), createArray(createObject('name', 'AI_PROVIDER', 'value', 'openai'), createObject('name', 'OPENAI_API_KEY', 'value', parameters('openAiApiKey'))))]"
   },
   "resources": [
     {
@@ -178,32 +256,7 @@
           }
         },
         "siteConfig": {
-          "appSettings": [
-            {
-              "name": "AzureWebJobsStorage",
-              "value": "[format('DefaultEndpointsProtocol=https;AccountName={0};EndpointSuffix={1};AccountKey={2}', variables('storageName'), environment().suffixes.storage, listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('storageName')), '2023-05-01').keys[0].value)]"
-            },
-            {
-              "name": "DEPLOYMENT_STORAGE_CONNECTION_STRING",
-              "value": "[format('DefaultEndpointsProtocol=https;AccountName={0};EndpointSuffix={1};AccountKey={2}', variables('storageName'), environment().suffixes.storage, listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('storageName')), '2023-05-01').keys[0].value)]"
-            },
-            {
-              "name": "FUNCTIONS_EXTENSION_VERSION",
-              "value": "~4"
-            },
-            {
-              "name": "APPINSIGHTS_INSTRUMENTATIONKEY",
-              "value": "[reference(resourceId('Microsoft.Insights/components', variables('appInsightsName')), '2020-02-02').InstrumentationKey]"
-            },
-            {
-              "name": "APPLICATIONINSIGHTS_CONNECTION_STRING",
-              "value": "[reference(resourceId('Microsoft.Insights/components', variables('appInsightsName')), '2020-02-02').ConnectionString]"
-            },
-            {
-              "name": "OPENAI_API_KEY",
-              "value": "[parameters('openAiApiKey')]"
-            }
-          ],
+          "appSettings": "[concat(createArray(createObject('name', 'AzureWebJobsStorage', 'value', format('DefaultEndpointsProtocol=https;AccountName={0};EndpointSuffix={1};AccountKey={2}', variables('storageName'), environment().suffixes.storage, listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('storageName')), '2023-05-01').keys[0].value)), createObject('name', 'DEPLOYMENT_STORAGE_CONNECTION_STRING', 'value', format('DefaultEndpointsProtocol=https;AccountName={0};EndpointSuffix={1};AccountKey={2}', variables('storageName'), environment().suffixes.storage, listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('storageName')), '2023-05-01').keys[0].value)), createObject('name', 'FUNCTIONS_EXTENSION_VERSION', 'value', '~4'), createObject('name', 'APPINSIGHTS_INSTRUMENTATIONKEY', 'value', reference(resourceId('Microsoft.Insights/components', variables('appInsightsName')), '2020-02-02').InstrumentationKey), createObject('name', 'APPLICATIONINSIGHTS_CONNECTION_STRING', 'value', reference(resourceId('Microsoft.Insights/components', variables('appInsightsName')), '2020-02-02').ConnectionString)), variables('aiAppSettings'))]",
           "cors": {
             "allowedOrigins": [
               "[parameters('allowedOrigins')]",
@@ -239,6 +292,63 @@
       "dependsOn": [
         "[resourceId('Microsoft.Web/sites', variables('functionAppName'))]",
         "[resourceId('Microsoft.Storage/storageAccounts', variables('storageName'))]"
+      ]
+    },
+    {
+      "condition": "[parameters('createResultsStorage')]",
+      "type": "Microsoft.Storage/storageAccounts",
+      "apiVersion": "2023-05-01",
+      "name": "[variables('resultsStorageName')]",
+      "location": "[parameters('location')]",
+      "sku": {
+        "name": "Standard_LRS"
+      },
+      "kind": "StorageV2",
+      "properties": {
+        "supportsHttpsTrafficOnly": true,
+        "minimumTlsVersion": "TLS1_2",
+        "allowBlobPublicAccess": false
+      },
+      "tags": {
+        "project": "ScubaGearAnalyzer",
+        "component": "results-storage"
+      }
+    },
+    {
+      "condition": "[parameters('createResultsStorage')]",
+      "type": "Microsoft.Storage/storageAccounts/blobServices",
+      "apiVersion": "2023-05-01",
+      "name": "[format('{0}/{1}', variables('resultsStorageName'), 'default')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Storage/storageAccounts', variables('resultsStorageName'))]"
+      ]
+    },
+    {
+      "condition": "[parameters('createResultsStorage')]",
+      "type": "Microsoft.Storage/storageAccounts/blobServices/containers",
+      "apiVersion": "2023-05-01",
+      "name": "[format('{0}/{1}/{2}', variables('resultsStorageName'), 'default', parameters('resultsContainerName'))]",
+      "properties": {
+        "publicAccess": "None"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Storage/storageAccounts/blobServices', variables('resultsStorageName'), 'default')]"
+      ]
+    },
+    {
+      "condition": "[parameters('createResultsStorage')]",
+      "type": "Microsoft.Authorization/roleAssignments",
+      "apiVersion": "2022-04-01",
+      "scope": "[resourceId('Microsoft.Storage/storageAccounts', variables('resultsStorageName'))]",
+      "name": "[guid(resourceId('Microsoft.Storage/storageAccounts', variables('resultsStorageName')), resourceId('Microsoft.Web/sites', variables('functionAppName')), variables('storageBlobDataReaderRoleId'))]",
+      "properties": {
+        "principalId": "[reference(resourceId('Microsoft.Web/sites', variables('functionAppName')), '2024-04-01', 'full').identity.principalId]",
+        "roleDefinitionId": "[variables('storageBlobDataReaderRoleId')]",
+        "principalType": "ServicePrincipal"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/sites', variables('functionAppName'))]",
+        "[resourceId('Microsoft.Storage/storageAccounts', variables('resultsStorageName'))]"
       ]
     },
     {
@@ -305,9 +415,83 @@
       "dependsOn": [
         "[resourceId('Microsoft.Web/sites', variables('functionAppName'))]"
       ]
+    },
+    {
+      "condition": "[and(equals(parameters('aiProvider'), 'azure'), and(parameters('assignAzureOpenAiRole'), not(empty(variables('azureOpenAiAccount')))))]",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "azureOpenAiRbac",
+      "subscriptionId": "[parameters('azureOpenAiSubscriptionId')]",
+      "resourceGroup": "[parameters('azureOpenAiResourceGroup')]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "accountName": {
+            "value": "[variables('azureOpenAiAccount')]"
+          },
+          "functionAppPrincipalId": {
+            "value": "[reference(resourceId('Microsoft.Web/sites', variables('functionAppName')), '2024-04-01', 'full').identity.principalId]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "description": "Grants Cognitive Services OpenAI User to the function app Managed Identity on an existing Azure OpenAI / AI Services account."
+          },
+          "parameters": {
+            "accountName": {
+              "type": "string",
+              "metadata": {
+                "description": "Name of the existing Azure OpenAI / Azure AI Services account"
+              }
+            },
+            "functionAppPrincipalId": {
+              "type": "string",
+              "metadata": {
+                "description": "Principal ID of the function app Managed Identity"
+              }
+            }
+          },
+          "variables": {
+            "openAiUserRoleId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '5e0bd9bd-7b93-4f28-af87-19fc36ad61bd')]"
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "scope": "[resourceId('Microsoft.CognitiveServices/accounts', parameters('accountName'))]",
+              "name": "[guid(resourceId('Microsoft.CognitiveServices/accounts', parameters('accountName')), parameters('functionAppPrincipalId'), variables('openAiUserRoleId'))]",
+              "properties": {
+                "principalId": "[parameters('functionAppPrincipalId')]",
+                "roleDefinitionId": "[variables('openAiUserRoleId')]",
+                "principalType": "ServicePrincipal"
+              }
+            }
+          ]
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/sites', variables('functionAppName'))]"
+      ]
     }
   ],
   "outputs": {
+    "aiProvider": {
+      "type": "string",
+      "value": "[parameters('aiProvider')]"
+    },
+    "resultsStorageAccountName": {
+      "type": "string",
+      "value": "[if(parameters('createResultsStorage'), variables('resultsStorageName'), '')]"
+    },
+    "resultsContainerName": {
+      "type": "string",
+      "value": "[if(parameters('createResultsStorage'), parameters('resultsContainerName'), '')]"
+    },
     "functionAppName": {
       "type": "string",
       "value": "[variables('functionAppName')]"

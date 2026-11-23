@@ -39,7 +39,7 @@ backed by **Azure Functions**, with an optional **Copilot Studio** AI agent.
 - **Azure CLI** (`az`) installed
 - **Node.js 22+**
 - **Azure Functions Core Tools** (`func`)
-- **OpenAI API key** (GPT-4o)
+- **An AI model for chat**: an OpenAI API key (GPT-4o), or an existing Azure OpenAI / Azure AI Foundry deployment
 - **Power Platform environment** with Power Apps access (Copilot Studio optional)
 
 ## Quick Start
@@ -130,7 +130,7 @@ cd azure-functions
 npm install
 npm run build
 
-# Set your OpenAI key
+# Set your OpenAI key (or AI_PROVIDER=azure with AZURE_OPENAI_ENDPOINT / AZURE_OPENAI_DEPLOYMENT)
 $env:OPENAI_API_KEY = "sk-..."
 
 # Start locally

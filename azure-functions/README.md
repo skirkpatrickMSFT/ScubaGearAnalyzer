@@ -28,7 +28,7 @@ Power Apps / Copilot Studio
 | Function | Method | Route | Description |
 |----------|--------|-------|-------------|
 | **parse-results** | POST | `/api/parse-results` | Accepts raw ScubaGear JSON (TestResults or ScubaResults format), parses all controls, computes pass/fail summary, product breakdown, and chat context. This is the primary entry point when users paste JSON directly. |
-| **chat** | POST | `/api/chat` | LLM-powered compliance assistant using OpenAI GPT-4o with function-calling. Grounded on CISA baseline data and Microsoft Learn. Accepts a user message, optional assessment context from a parsed report, and conversation history. |
+| **chat** | POST | `/api/chat` | LLM-powered compliance assistant (OpenAI or Azure OpenAI) with function-calling. Grounded on CISA baseline data and Microsoft Learn. Accepts a user message, optional assessment context from a parsed report, and conversation history. |
 
 ### Baseline (CISA ScubaGear policy data)
 
@@ -90,7 +90,14 @@ for RBAC setup instructions.
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `OPENAI_API_KEY` | Yes (for chat) | OpenAI API key for GPT-4o. Only needed by the `chat` function. |
+| `AI_PROVIDER` | No | `openai` or `azure`. Inferred as `azure` when `AZURE_OPENAI_ENDPOINT` is set, otherwise `openai`. |
+| `OPENAI_API_KEY` | Yes, for `openai` | OpenAI API key. Only needed by the `chat` function. |
+| `OPENAI_MODEL` | No | OpenAI model name. Defaults to `gpt-4o`. |
+| `AZURE_OPENAI_ENDPOINT` | Yes, for `azure` | Azure OpenAI / AI Foundry endpoint, e.g. `https://<resource>.openai.azure.com`. |
+| `AZURE_OPENAI_DEPLOYMENT` | Yes, for `azure` | Model deployment name. |
+| `AZURE_OPENAI_API_VERSION` | No | Defaults to `2024-10-21`. |
+| `AZURE_OPENAI_API_KEY` | No | Local development only. Without it, the function app's Managed Identity (or `az login` locally) is used. |
+| `AZURE_OPENAI_TOKEN_SCOPE` | No | Override the Entra token scope. Inferred from the endpoint for commercial, `.azure.us` and `.azure.cn` clouds. |
 | `SCUBAGEAR_CURRENT_VERSION` | No | Override the ScubaGear version used in baseline URLs. Defaults to the pinned baseline version in `scubagear-version.json`. |
 
 ## Local Development

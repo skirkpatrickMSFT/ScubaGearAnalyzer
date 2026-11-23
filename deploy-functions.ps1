@@ -17,11 +17,45 @@
 .PARAMETER BaseName
     Base name for all resources. Default: scubagear.
 
+.PARAMETER AiProvider
+    Chat model provider: 'openai' (OpenAI API key) or 'azure' (Azure OpenAI / Azure AI Foundry
+    with the function app's Managed Identity). Defaults to 'azure' when -AzureOpenAiEndpoint is
+    supplied, otherwise 'openai'.
+
 .PARAMETER OpenAiApiKey
-    OpenAI API key. Prompts if not provided.
+    OpenAI API key (openai provider only). Prompts if not provided.
+
+.PARAMETER AzureOpenAiEndpoint
+    Azure OpenAI endpoint, e.g. https://my-resource.openai.azure.com (azure provider).
+
+.PARAMETER AzureOpenAiDeployment
+    Name of the model deployment to call (azure provider).
+
+.PARAMETER AzureOpenAiAccountName
+    Existing Azure OpenAI / AI Services account name, used for the role assignment.
+    Defaults to the first label of the endpoint host.
+
+.PARAMETER AzureOpenAiResourceGroup
+    Resource group of the Azure OpenAI account. Defaults to ResourceGroupName.
+
+.PARAMETER SkipAzureOpenAiRoleAssignment
+    Do not assign 'Cognitive Services OpenAI User' to the function app. Use this if you lack
+    permission to assign roles on the account and will have someone else do it.
+
+.PARAMETER SkipResultsStorage
+    Do not create the dedicated results storage account and container. By default a storage
+    account plus a private container are created for ScubaGear output, and the function app's
+    Managed Identity is granted Storage Blob Data Reader on it.
+
+.PARAMETER ResultsContainerName
+    Name of the results container. Default: scubagear-output.
 
 .EXAMPLE
     .\deploy-functions.ps1 -ResourceGroupName rg-scubagear-functions -Location eastus
+
+.EXAMPLE
+    .\deploy-functions.ps1 -ResourceGroupName rg-scubagear-functions `
+        -AzureOpenAiEndpoint https://my-resource.openai.azure.com -AzureOpenAiDeployment gpt-4o
 #>
 
 [CmdletBinding()]
@@ -31,7 +65,21 @@ param(
 
     [string]$Location = "eastus",
     [string]$BaseName = "scubagear",
+
+    [ValidateSet("", "openai", "azure")]
+    [string]$AiProvider = "",
     [string]$OpenAiApiKey = "",
+    [string]$AzureOpenAiEndpoint = "",
+    [string]$AzureOpenAiDeployment = "",
+    [string]$AzureOpenAiAccountName = "",
+    [string]$AzureOpenAiResourceGroup = "",
+    [switch]$SkipAzureOpenAiRoleAssignment,
+
+    [Parameter(HelpMessage = "Do not create the dedicated results storage account and container.")]
+    [switch]$SkipResultsStorage,
+
+    [Parameter(HelpMessage = "Name of the blob container created for ScubaGear results. Default: scubagear-output.")]
+    [string]$ResultsContainerName = "scubagear-output",
 
     [Parameter(HelpMessage = "Optional: external storage account name to grant the function app Managed Identity read access (e.g. for ScubaGear results).")]
     [string]$ExternalStorageAccountName = "",
@@ -63,8 +111,24 @@ if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
     throw "Node.js not found. Please install Node.js 22+."
 }
 
-# ── OpenAI Key ──────────────────────────────────────────────
-if ([string]::IsNullOrWhiteSpace($OpenAiApiKey)) {
+# ── AI provider ─────────────────────────────────────────────
+if ([string]::IsNullOrWhiteSpace($AiProvider)) {
+    $AiProvider = if (-not [string]::IsNullOrWhiteSpace($AzureOpenAiEndpoint)) { "azure" } else { "openai" }
+}
+
+if ($AiProvider -eq "azure") {
+    if ([string]::IsNullOrWhiteSpace($AzureOpenAiEndpoint)) {
+        $AzureOpenAiEndpoint = Read-Host -Prompt "Enter your Azure OpenAI endpoint (e.g. https://my-resource.openai.azure.com)"
+    }
+    if ([string]::IsNullOrWhiteSpace($AzureOpenAiDeployment)) {
+        $AzureOpenAiDeployment = Read-Host -Prompt "Enter your Azure OpenAI model deployment name"
+    }
+    if ([string]::IsNullOrWhiteSpace($AzureOpenAiEndpoint) -or [string]::IsNullOrWhiteSpace($AzureOpenAiDeployment)) {
+        throw "Azure OpenAI requires both an endpoint and a deployment name."
+    }
+    Write-OK "Using Azure OpenAI ($AzureOpenAiDeployment) with Managed Identity - no API key needed"
+}
+elseif ([string]::IsNullOrWhiteSpace($OpenAiApiKey)) {
     if (Test-Path ".env") {
         $envLine = Get-Content ".env" | Where-Object { $_ -match '^OPENAI_API_KEY=' }
         if ($envLine) {
@@ -95,8 +159,23 @@ Write-OK "Resource group ready"
 Write-Step "Deploying Azure Functions infrastructure via Bicep"
 $bicepParams = @(
     "baseName=$BaseName",
-    "openAiApiKey=$OpenAiApiKey"
+    "aiProvider=$AiProvider",
+    "createResultsStorage=$((-not $SkipResultsStorage).ToString().ToLower())",
+    "resultsContainerName=$ResultsContainerName"
 )
+if ($AiProvider -eq "azure") {
+    $bicepParams += "azureOpenAiEndpoint=$AzureOpenAiEndpoint"
+    $bicepParams += "azureOpenAiDeployment=$AzureOpenAiDeployment"
+    if (-not [string]::IsNullOrWhiteSpace($AzureOpenAiAccountName)) {
+        $bicepParams += "azureOpenAiAccountName=$AzureOpenAiAccountName"
+    }
+    $aoaiRg = if ([string]::IsNullOrWhiteSpace($AzureOpenAiResourceGroup)) { $ResourceGroupName } else { $AzureOpenAiResourceGroup }
+    $bicepParams += "azureOpenAiResourceGroup=$aoaiRg"
+    $bicepParams += "assignAzureOpenAiRole=$((-not $SkipAzureOpenAiRoleAssignment).ToString().ToLower())"
+}
+else {
+    $bicepParams += "openAiApiKey=$OpenAiApiKey"
+}
 if (-not [string]::IsNullOrWhiteSpace($ExternalStorageAccountName)) {
     $bicepParams += "externalStorageAccountName=$ExternalStorageAccountName"
     $extRg = if ([string]::IsNullOrWhiteSpace($ExternalStorageResourceGroup)) { $ResourceGroupName } else { $ExternalStorageResourceGroup }
@@ -110,9 +189,12 @@ $deployResult = az deployment group create `
 
 $funcAppName = $deployResult.properties.outputs.functionAppName.value
 $funcAppUrl  = $deployResult.properties.outputs.functionAppUrl.value
+$resultsAccount   = $deployResult.properties.outputs.resultsStorageAccountName.value
+$resultsContainer = $deployResult.properties.outputs.resultsContainerName.value
 
 Write-OK "Function App: $funcAppName"
 Write-OK "URL: $funcAppUrl"
+if ($resultsAccount) { Write-OK "Results storage: $resultsAccount / $resultsContainer" }
 
 # ── Build Functions ─────────────────────────────────────────
 Write-Step "Building Azure Functions project"
@@ -144,8 +226,21 @@ Write-Host ""
 Write-Host "  Function App URL : $funcAppUrl" -ForegroundColor White
 Write-Host "  Function App Name: $funcAppName" -ForegroundColor White
 Write-Host "  Host Key         : $hostKey" -ForegroundColor White
+if ($resultsAccount) {
+    Write-Host "  Results Storage  : $resultsAccount (container: $resultsContainer)" -ForegroundColor White
+}
 Write-Host ""
 Write-Host "  Next Steps:" -ForegroundColor Yellow
+if ($AiProvider -eq "azure") {
+    Write-Host "  0. Chat uses Azure OpenAI ($AzureOpenAiDeployment) via Managed Identity." -ForegroundColor White
+    if ($SkipAzureOpenAiRoleAssignment) {
+        Write-Host "     Role assignment was skipped: grant 'Cognitive Services OpenAI User' to the function app's" -ForegroundColor White
+        Write-Host "     system-assigned identity on the Azure OpenAI account." -ForegroundColor White
+    } else {
+        Write-Host "     'Cognitive Services OpenAI User' was assigned; role changes can take a few minutes to take effect." -ForegroundColor White
+    }
+    Write-Host ""
+}
 Write-Host "  1. Create a Custom Connector in Power Apps / Power Automate" -ForegroundColor White
 Write-Host "     - Import azure-functions/openapi.json" -ForegroundColor White
 Write-Host "     - Set host to: $($funcAppUrl -replace 'https://','')" -ForegroundColor White
@@ -154,6 +249,12 @@ Write-Host ""
 Write-Host "  2. Storage access: Managed Identity is enabled automatically." -ForegroundColor White
 Write-Host "     The function app can read blobs without a SAS token from:" -ForegroundColor White
 Write-Host "     - Its own storage account (auto-configured)" -ForegroundColor White
+if ($resultsAccount) {
+    Write-Host "     - Results storage: $resultsAccount / $resultsContainer (created, RBAC assigned)" -ForegroundColor White
+    Write-Host "       Point ScubaConnect (or upload ScubaResults.json) at this container. To upload manually:" -ForegroundColor DarkGray
+    Write-Host "       az storage blob upload --auth-mode login --account-name $resultsAccount -c $resultsContainer -f ScubaResults.json -n ScubaResults.json" -ForegroundColor DarkGray
+    Write-Host "       (uploading needs 'Storage Blob Data Contributor' on the account for your own user)" -ForegroundColor DarkGray
+}
 if (-not [string]::IsNullOrWhiteSpace($ExternalStorageAccountName)) {
     Write-Host "     - External storage: $ExternalStorageAccountName (RBAC assigned)" -ForegroundColor White
 } else {

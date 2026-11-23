@@ -13,7 +13,7 @@ Baseline control data is **generated directly from the CISA baselines** at a pin
 | Component | Description |
 |-----------|-------------|
 | `azure-functions/` | TypeScript Azure Functions backend — JSON parsing, baseline lookups and change history, Learn docs, storage integration, GPT-4o chat (14 endpoints) |
-| `infra/` | Bicep deployment templates (`functions.bicep`, `external-storage-rbac.bicep`) |
+| `infra/` | Bicep deployment templates (`functions.bicep`, `external-storage-rbac.bicep`, `external-openai-rbac.bicep`) — creates the Function App, its storage, a results storage account + container, and Application Insights |
 | `power-apps/` | Power Apps canvas app — pre-built `.msapp` export + step-by-step build guide + source files |
 | `copilot-studio/` | Copilot Studio agent definition *(optional — alternative chat interface)* |
 | `deploy-functions.ps1` | One-click Azure Functions deployment script |
@@ -48,7 +48,7 @@ Baseline control data is **generated directly from the CISA baselines** at a pin
                    │ SAS Token  — or —  Managed Identity
 ┌──────────────────▼──────────────────────────────┐
 │        Azure Blob Storage (ScubaConnect)        │
-│  scubagear-output / yyyy/MM/dd/ScubaResults.json│
+│  scubagear-output / yyyy/MM/dd/ScubaResults.json│  ← created by the deployment
 └─────────────────────────────────────────────────┘
 ```
 
@@ -57,7 +57,7 @@ Baseline control data is **generated directly from the CISA baselines** at a pin
 - **Azure subscription**
 - **Azure CLI** (`az`) installed and logged in
 - **Node.js 22+**
-- **OpenAI API key** (GPT-4o)
+- **An AI model for chat**: an **OpenAI API key** (GPT-4o), *or* an existing **Azure OpenAI / Azure AI Foundry** model deployment (no key needed — see [Using Azure OpenAI](#using-azure-openai-instead-of-an-openai-key))
 - **Power Platform environment** (for Power Apps; Copilot Studio is optional)
 
 ## Quick Start
@@ -69,7 +69,10 @@ Two deployment paths:
 1. Click the **Deploy to Azure** button above
 2. Fill in the parameters:
    - **Resource group**: create new or use existing
-   - **OpenAI API Key**: your GPT-4o key
+   - **Ai Provider**: `openai` (default) or `azure`
+   - For `openai`: **OpenAI Api Key** — your GPT-4o key
+   - For `azure`: **Azure Open Ai Endpoint** and **Azure Open Ai Deployment** — see [Using Azure OpenAI](#using-azure-openai-instead-of-an-openai-key)
+   - **Create Results Storage** (default on): creates a storage account and a private `scubagear-output` container for ScubaGear results, readable by the function app's Managed Identity; the names appear under **Outputs**
    - Leave other defaults as-is
 3. Click **Review + create** → **Create**
 4. After deployment completes (~3 minutes), go to **Outputs** to get your Function App name and URL
@@ -90,18 +93,40 @@ For a complete end-to-end walkthrough, see **[DEPLOYMENT-GUIDE.md](DEPLOYMENT-GU
 ### 1. Set up your environment
 
 ```powershell
-# Copy the example env file and add your OpenAI key
+# Copy the example env file and add your AI settings
 Copy-Item .env.example .env
-# Edit .env and set: OPENAI_API_KEY=sk-your-key-here
+# Edit .env: set OPENAI_API_KEY=sk-your-key-here
+#   or the AZURE_OPENAI_ENDPOINT / AZURE_OPENAI_DEPLOYMENT settings (see below)
 ```
 
 ### 2. Deploy Azure Functions
 
 ```powershell
+# OpenAI (prompts for the key, or reads it from .env)
 .\deploy-functions.ps1 -ResourceGroupName <your-rg-name> -Location eastus
+
+# Azure OpenAI / Azure AI Foundry (Managed Identity, no key)
+.\deploy-functions.ps1 -ResourceGroupName <your-rg-name> -Location eastus `
+    -AzureOpenAiEndpoint https://<resource>.openai.azure.com -AzureOpenAiDeployment <deployment-name>
 ```
 
 This deploys the Function App, builds the TypeScript code, and outputs your **Function App URL** and **Host Key**.
+
+### Using Azure OpenAI instead of an OpenAI key
+
+The chat endpoint can call a model you already have in **Azure OpenAI** or **Azure AI Foundry**. The function
+app authenticates with its system-assigned Managed Identity, so no API key is stored anywhere.
+
+| Template / script parameter | Purpose |
+|-----------------------------|---------|
+| `aiProvider` / `-AiProvider` | `azure` (inferred automatically when an endpoint is given) |
+| `azureOpenAiEndpoint` / `-AzureOpenAiEndpoint` | e.g. `https://<resource>.openai.azure.com` |
+| `azureOpenAiDeployment` / `-AzureOpenAiDeployment` | The **deployment** name (not the model name). Needs a chat model with function calling, such as GPT-4o |
+| `azureOpenAiAccountName`, `azureOpenAiResourceGroup`, `azureOpenAiSubscriptionId` | Only if the account is in another resource group or subscription, or its name differs from the endpoint's first label |
+| `assignAzureOpenAiRole` / `-SkipAzureOpenAiRoleAssignment` | The deployment assigns **Cognitive Services OpenAI User** to the function app on that account. The person deploying needs Owner or User Access Administrator on the account; otherwise skip it and have an admin assign the role |
+
+Role assignments can take a few minutes to take effect, so the first chat request after deployment may fail with a 401/403.
+For local development, `az login` is used automatically; set `AZURE_OPENAI_API_KEY` only if you need a key.
 
 ### 3. Create Custom Connector
 

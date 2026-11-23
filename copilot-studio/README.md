@@ -230,5 +230,5 @@ Azure Functions (Flex Consumption / Node.js 22)
 
 | Variable | Description |
 |----------|-------------|
-| `OPENAI_API_KEY` | OpenAI API key for the `/chat` endpoint |
+| `OPENAI_API_KEY` | OpenAI API key for the `/chat` endpoint (or `AI_PROVIDER=azure` with `AZURE_OPENAI_ENDPOINT` and `AZURE_OPENAI_DEPLOYMENT` to use Azure OpenAI) |
 | `ALLOWED_ORIGINS` | CORS origins (Power Apps domain) |

@@ -4,14 +4,14 @@
  * POST /api/chat
  * Body: { message: string, assessmentContext?: string, history?: ChatMessage[] }
  * 
- * LLM-powered chat using OpenAI GPT-4o with function-calling.
+ * LLM-powered chat (OpenAI or Azure OpenAI, see shared/ai-client.ts) with function-calling.
  * Grounded on ScubaGear baseline data and Microsoft Learn documentation.
  * This is the primary endpoint consumed by the Power Apps chat screen
  * (and optionally the Copilot Studio agent).
  */
 
 import { app, HttpRequest, HttpResponseInit, InvocationContext } from '@azure/functions';
-import OpenAI from 'openai';
+import { getChatClient } from '../shared/ai-client.js';
 import { getControlById, searchControls, getControlsBySection, getControlsByProduct, getSectionName, canonicalizeProduct, HIGHLY_PRIVILEGED_ROLES, SCUBAGEAR_BASELINE_VERSION } from '../shared/baseline-data.js';
 import { getChanges, getControlHistory, getRelease, getReleases, resolveControl, formatChangesMarkdown, describeChange, normalizeVersion } from '../shared/baseline-changes.js';
 import { searchLearn, fetchArticle, getLearnUrlsForControl, getSearchQueryForTopic } from '../shared/learn-fetcher.js';
@@ -19,14 +19,6 @@ import { SCUBAGEAR_CURRENT_VERSION, extractProduct, buildExclusionSummary } from
 import type { ExclusionContext } from '../shared/types.js';
 import type { ChatCompletionMessageParam, ChatCompletionTool } from 'openai/resources/index';
 
-// ── OpenAI client ───────────────────────────────────────────
-let _openai: OpenAI | null = null;
-function getOpenAI(): OpenAI {
-  if (!_openai) {
-    _openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-  }
-  return _openai;
-}
 
 // ── Rego policy fetching ────────────────────────────────────
 // File names are case-sensitive on raw.githubusercontent.com (note `SharepointConfig`).
@@ -889,9 +881,10 @@ app.http('chat', {
       messages.push({ role: 'user', content: message });
 
       // Agentic loop
+      const { client: ai, model } = getChatClient();
       for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-        const completion = await getOpenAI().chat.completions.create({
-          model: 'gpt-4o',
+        const completion = await ai.chat.completions.create({
+          model,
           messages,
           tools: TOOLS,
           tool_choice: 'auto',
@@ -928,8 +921,8 @@ app.http('chat', {
 
       // Exhausted loop
       messages.push({ role: 'user', content: 'Provide your best answer with the information gathered.' });
-      const finalCompletion = await getOpenAI().chat.completions.create({
-        model: 'gpt-4o',
+      const finalCompletion = await ai.chat.completions.create({
+        model,
         messages,
         temperature: 0.2,
       });

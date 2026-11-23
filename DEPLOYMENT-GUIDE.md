@@ -24,7 +24,9 @@ Use the **Deploy to Azure** button to create all infrastructure through the Azur
    - **Subscription**: select your Azure subscription
    - **Resource group**: click **Create new** → name it (e.g., `rg-scubagear`)
    - **Region**: select your preferred region
-   - **OpenAI API Key**: paste your GPT-4o key
+   - **Ai Provider**: `openai` (default) or `azure`
+   - **OpenAI Api Key**: paste your GPT-4o key (when using `openai`)
+   - **Azure Open Ai Endpoint** / **Azure Open Ai Deployment**: your existing Azure OpenAI or Azure AI Foundry endpoint and model deployment name (when using `azure`; no key is needed — the template grants the function app's Managed Identity the *Cognitive Services OpenAI User* role on that account, which requires you to be Owner or User Access Administrator on it)
    - Leave other fields at their defaults
 4. Click **Review + create** → **Create**
 5. Wait for deployment (~2–3 minutes)
@@ -83,7 +85,7 @@ Before you begin, make sure the following are available in your environment.
 | **Azure subscription** | Any subscription where you can create resource groups |
 | **Azure CLI** | Install from [https://aka.ms/installazurecli](https://aka.ms/installazurecli), then run `az login` |
 | **Node.js 22+** | Install from [https://nodejs.org](https://nodejs.org) |
-| **OpenAI API key** | GPT-4o key from [https://platform.openai.com](https://platform.openai.com) |
+| **AI model for chat** | Either an OpenAI API key (GPT-4o) from [https://platform.openai.com](https://platform.openai.com), or an existing Azure OpenAI / Azure AI Foundry chat model deployment (no key; uses Managed Identity) |
 | **Power Platform environment** | With Power Apps access (Copilot Studio is optional) |
 
 Verify your tools:
@@ -106,7 +108,9 @@ git clone https://github.com/<your-org>/ScubaGearAnalyzer.git
 cd ScubaGearAnalyzer
 ```
 
-### 2.2 Set your OpenAI API key
+### 2.2 Configure your AI provider
+
+**OpenAI:**
 
 ```powershell
 Copy-Item .env.example .env
@@ -121,6 +125,17 @@ OPENAI_API_KEY=sk-your-key-here
 > The deployment script reads this file automatically. You can also pass the
 > key directly with `-OpenAiApiKey` if you prefer.
 
+**Azure OpenAI / Azure AI Foundry (no key):** skip `.env` and pass your endpoint and deployment instead:
+
+```powershell
+.\deploy-functions.ps1 -ResourceGroupName <your-rg-name> `
+    -AzureOpenAiEndpoint https://<resource>.openai.azure.com -AzureOpenAiDeployment <deployment-name>
+```
+
+The script grants the function app's Managed Identity **Cognitive Services OpenAI User** on that account.
+If you cannot assign roles there, add `-SkipAzureOpenAiRoleAssignment` and ask an administrator to assign it;
+use `-AzureOpenAiAccountName` / `-AzureOpenAiResourceGroup` if the account is in another resource group.
+
 ---
 
 ## Phase 3: Deploy Azure Functions
@@ -134,7 +149,7 @@ This single command creates all Azure resources and deploys the backend:
 **What it does:**
 
 1. Creates the resource group (if it doesn't exist)
-2. Deploys infrastructure via Bicep (Function App + Storage Account + Application Insights)
+2. Deploys infrastructure via Bicep (Function App + Storage Account + results storage account/container + Application Insights)
 3. Installs npm dependencies and builds the TypeScript project
 4. Publishes the compiled functions to Azure
 5. Outputs three values you'll need for the next phase:
@@ -157,10 +172,27 @@ methods:
 | **SAS Token** | Quick testing, cross-tenant access | Pass a `sasToken` parameter in each request |
 | **Managed Identity** | Production, same-tenant | Omit `sasToken` — the function app uses its system-assigned identity |
 
-Managed Identity is enabled automatically during deployment. The function app is
-granted **Storage Blob Data Reader** on its own storage account by default.
+Managed Identity is enabled automatically during deployment. The deployment also
+**creates a dedicated results storage account and a private `scubagear-output` container**
+for ScubaGear output, and grants the function app **Storage Blob Data Reader** on it (and on its
+own storage account). The account and container names are shown in the deployment summary and
+in the template outputs `resultsStorageAccountName` / `resultsContainerName` — enter them on the
+Power App's **Load from Storage** screen with *Use Managed Identity* turned on.
 
-To also grant access to an external storage account (e.g., where ScubaGear
+| Parameter | Effect |
+|-----------|--------|
+| `-SkipResultsStorage` (template: `createResultsStorage = false`) | Don't create the account/container, e.g. when you already have one |
+| `-ResultsContainerName` (template: `resultsContainerName`) | Container name. Default `scubagear-output` |
+
+To get results into it, point ScubaConnect (or any scheduled ScubaGear run) at the container, or upload a file
+yourself. Uploading needs **Storage Blob Data Contributor** on the account for your own user:
+
+```powershell
+az storage blob upload --auth-mode login --account-name <results-account> `
+    -c scubagear-output -f ScubaResults.json -n ScubaResults.json
+```
+
+To grant access to a storage account you already have (e.g., where ScubaGear
 uploads results), re-run the deployment with:
 
 ```powershell
