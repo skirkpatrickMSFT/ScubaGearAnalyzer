@@ -16,6 +16,7 @@ import { getControlById, searchControls, getControlsBySection, getControlsByProd
 import { getChanges, getControlHistory, getRelease, getReleases, resolveControl, formatChangesMarkdown, describeChange, normalizeVersion } from '../shared/baseline-changes.js';
 import { searchLearn, fetchArticle, getLearnUrlsForControl, getSearchQueryForTopic } from '../shared/learn-fetcher.js';
 import { SCUBAGEAR_CURRENT_VERSION, extractProduct, buildExclusionSummary } from '../shared/scubagear-parser.js';
+import { buildCapAnalysis, DIAGNOSIS_INTENT_RE, extractControlReferences, extractRegoRule, FAILURE_INTENT_RE, prioritizeFailures, parseNearMisses } from '../shared/analysis.js';
 import type { ExclusionContext } from '../shared/types.js';
 import type { ChatCompletionMessageParam, ChatCompletionTool } from 'openai/resources/index';
 
@@ -48,51 +49,17 @@ async function fetchRegoFile(product: string): Promise<string | null> {
   } catch { return null; }
 }
 
-/**
- * Extract the Rego rule for a specific control plus its helper
- * definitions and the file header (package / imports).
- */
-function extractRegoRule(regoContent: string, controlId: string): string {
-  const lines = regoContent.split('\n');
+const MAX_REGO_EXCERPT = 6_000;
 
-  // Header: package + imports
-  const headerLines: string[] = [];
-  for (const line of lines) {
-    if (line.startsWith('package ') || line.startsWith('import ') || line.trim() === '') {
-      headerLines.push(line);
-    } else break;
-  }
-
-  // Locate the PolicyId
-  const policyIdx = lines.findIndex(l => l.includes(`"${controlId}"`));
-  if (policyIdx === -1) return `No Rego rule found for ${controlId} in the policy file.`;
-
-  // Walk backwards to find rule start ("tests contains" or "tests [")
-  let ruleStart = policyIdx;
-  for (let i = policyIdx - 1; i >= 0; i--) {
-    if (lines[i].trim().match(/^tests\s/)) { ruleStart = i; break; }
-  }
-
-  // Brace-match to find the end of the rule
-  let depth = 0, started = false, ruleEnd = policyIdx;
-  for (let i = ruleStart; i < lines.length; i++) {
-    for (const ch of lines[i]) {
-      if (ch === '{') { depth++; started = true; }
-      if (ch === '}') depth--;
-    }
-    if (started && depth <= 0) { ruleEnd = i; break; }
-  }
-
-  // Grab ~40 lines before the rule start to capture related helpers
-  const contextStart = Math.max(ruleStart - 40, headerLines.length);
-  const preContext = lines.slice(contextStart, ruleStart)
-    .join('\n').trim();
-
-  let result = headerLines.join('\n') + '\n';
-  if (preContext) result += '\n# --- Related definitions ---\n' + preContext + '\n';
-  result += `\n# --- Rule for ${controlId} ---\n` +
-    lines.slice(ruleStart, ruleEnd + 1).join('\n');
-  return result;
+/** The Rego that evaluates a control, trimmed for the model; null when it cannot be fetched or found. */
+async function getRegoExcerpt(controlId: string): Promise<string | null> {
+  const product = extractProduct(controlId);
+  if (!product) return null;
+  const content = await fetchRegoFile(product);
+  if (!content) return null;
+  const rule = extractRegoRule(content, controlId);
+  if (rule.startsWith('No Rego rule found')) return null;
+  return rule.length > MAX_REGO_EXCERPT ? `${rule.slice(0, MAX_REGO_EXCERPT)}\n# …[truncated]` : rule;
 }
 
 // ── System prompt ───────────────────────────────────────────
@@ -125,15 +92,34 @@ CISA updates the baselines with each ScubaGear release, and a report may come fr
 - Explain the *practical impact* of a change (new requirement to satisfy, a relaxed requirement, a control that merged into another, a control that no longer has an automated check) rather than just listing IDs. Distinguish changes that affect BOD 25-01 required controls.
 - Only report changes the tools return. If the history does not cover something, say so.
 
+### Understanding the question
+Work out what each question is actually asking, then answer that. Do not force every question into one template. Common intents:
+- **Failure clarification** — "why is X failing", "how do I pass check X", "how do I fix X", "what's wrong with X", "what do I need to change for X", "get X to pass". All of these deserve the same full diagnosis whatever the wording: the cause, the options and trade-offs, exact changes or commands, and how to verify. Adjust only the emphasis: for "how do I pass / fix", lead with the fix; for "why", lead with the cause.
+- **Meaning, requirement, rationale, license, or how a control is checked** — answer directly and concisely from baseline data (baseline_get_control_info, baseline_get_remediation_steps). Do not turn it into a failure analysis; if the control happens to be failing, one sentence saying so is enough unless asked.
+- **Status check** ("is X passing?", "what's my result for X?") — state the status and the short reason in a sentence or two, and offer the detail.
+- **Comparisons or several controls at once** — use a compact table.
+- **Overview or priorities** ("what should I fix first?", "summarise my failures") — prioritize_failures.
+- **What changed between ScubaGear versions** — the baseline change tools.
+- **Anything unclear** — if the question could mean two different things, pick the most likely reading and say which you assumed, or ask one short question.
+A short follow-up such as "how do I fix it?" refers to the control just discussed. A bare number such as "check 3.1" that exists in several products is settled by the conversation; if it is not, ask which one rather than guessing.
+
+When a question looks like failure clarification, a **pre-fetched diagnosis** is supplied as a system message before it. Treat it as data, not a template: use what is relevant to what the user asked, and if they asked something else, answer that. For other questions nothing is pre-fetched, so call the tools you need.
+
 ### Scan result analysis
-When the user asks about a specific control — whether about its status, why it failed, what it means, or anything else — ALWAYS use the **analyze_scan_result** tool to get the full scan details. This tool combines the raw ScubaGear scan output with the official CISA baseline requirement. Use it for ANY question targeting a specific control ID: "why did X fail?", "what's my status for X?", "what's wrong with X?", "explain X", "tell me about X", etc. Extract specific findings: user names, group names, policy names, and settings that caused the result.
+When the user asks about the result or failure of a specific control, use the **analyze_scan_result** tool to get the full scan details (unless a pre-fetched diagnosis for that control is already provided). It combines the raw ScubaGear scan output with the official CISA baseline requirement and, for failing automated checks, the **Rego rule ScubaGear evaluated**. Extract specific findings: user names, group names, policy names, and settings that caused the result. For pure definition questions (what it requires, why CISA wants it, licensing) the baseline tools are enough.
+
+Use the Rego section to name the exact condition that was not met, and summarise it in plain English. For a **near miss**, check the Rego to confirm what else a policy must satisfy besides the approved exclusions, and say so plainly if approving the exclusion alone would not make the control pass.
+
+For Conditional Access controls (MS.AAD.3.x) the tool also returns a **policy evidence table**, any **ScubaGear near miss** (a policy that would pass if the config file approved its exclusions), a **decision** with a ready-to-paste config snippet, and an **identity cross-reference**. Use those sections as written: quote the exact policy names, states and GUIDs, keep the YAML snippet as given, and do not invent display names for GUIDs the report does not resolve.
+
+### Prioritisation
+When the user asks what to fix first, what matters most, for a summary of failures, or for a remediation plan, call **prioritize_failures** (optionally with a product) and present its tiers in order: quick wins, BOD 25-01 SHALL, other SHALL, then SHOULD. Do not rank controls yourself.
 
 ### Exclusion analysis
 The user's scan data includes **exclusion configuration** from the ScubaGear config file and from Conditional Access Policies (CAPs). Use the **analyze_exclusions** tool when:
 - The user asks "what exclusions do I have?", "show me my exclusions", or "list exclusions"
-- A CAP-related control fails and you need to determine if unapproved exclusions are the cause
-- The user asks about CapExclusions, AnnotatePolicy, OmitPolicy, or excluded users/groups
-- Analysing any control that involves Conditional Access Policies (e.g. MS.AAD.3.6v1, MS.AAD.3.7v1, MS.AAD.3.8v1 and similar)
+- The user asks about CapExclusions, AnnotatePolicy, OmitPolicy, or excluded users/groups across the whole tenant
+(analyze_scan_result already includes the exclusion evidence for a single CAP control, so do not call analyze_exclusions as well when answering a question about one control.)
 
 Exclusion types:
 - **CapExclusions**: Approved user/group exclusions per control (e.g. break-glass accounts excluded from MS.AAD.3.6v1)
@@ -141,16 +127,17 @@ Exclusion types:
 - **OmitPolicy**: Policies completely omitted from evaluation
 - **CAP ExcludeUsers/ExcludeGroups**: Users and groups excluded within each Conditional Access Policy — these may or may not be approved
 
-When analysing ANY Conditional Access Policy-related control (MS.AAD section 3 controls: 3.1 through 3.9), ALWAYS call analyze_exclusions — regardless of whether the user is asking about status, failure reasons, or general info. Exclusion configuration is critical context for ALL CAP controls. Cross-reference the CAP exclusions against the approved CapExclusions to identify gaps.
-
 ### Rego policy comparison
-For deeper root-cause analysis of failures, use the **fetch_rego_policy** tool to retrieve the actual OPA Rego rule that ScubaGear used to evaluate the control. Compare the Rego logic against the **ActualValue** data from the scan to pinpoint exactly which condition failed. Walk through the Rego rule step-by-step, showing which conditions passed and which didn't match the actual configuration. This is the most precise way to explain WHY a control failed.
+analyze_scan_result already includes the Rego for a failing automated control. Use **fetch_rego_policy** only when you need the rule for a different control, or the user explicitly asks to see the full rule. Compare the Rego logic against the **ActualValue** data from the scan to pinpoint exactly which condition failed, walking through the conditions that passed and the one that did not.
 
 ### Response guidelines
+- **Lead with the answer to what was asked.** The first sentence gives the direct answer, for example "MS.AAD.3.1v1 fails because one enabled policy is a single exclusion away from passing."
+- When explaining a failure (why it fails, how to pass or fix it) use this order, and skip any part that has nothing specific to say: **Why it fails** (the evidence: policy names, states, GUIDs, settings), **Your options** (what to change, with the trade-off), **Config / commands** (exact snippets), **How to verify** (re-run ScubaGear). Mention the baseline requirement in one short line, not a restated paragraph. Other kinds of question get a shape that fits them: short for definitions and status, a table for comparisons.
+- Do not add generic advice such as "review your policies" or closing summaries. Every sentence should reference something from this tenant's scan or give a concrete action.
+- When there is a security trade-off (approving an exclusion, disabling a check), state it plainly and let the user decide.
+- Only state facts that appear in tool output or the uploaded assessment. If something is unknown (for example who an account GUID belongs to), say so and give the steps to find out.
 - Always ground your answers in either ScubaGear Baseline data or Microsoft Learn documentation.
-- When discussing a failing control, first explain what the control requires, then explain why it failed based on the actual scan findings, then provide targeted remediation steps referencing the specific users/groups/policies found.
-- Format responses in Markdown. Use headings, bullet lists, and tables.
-- Be concise but thorough.
+- Format responses in Markdown. Use headings sparingly, short bullet lists, and tables for comparisons.
 - When showing remediation steps, include specific navigation paths in the Microsoft admin portals.`;
 
 // ── Tool definitions ────────────────────────────────────────
@@ -373,6 +360,21 @@ export const TOOLS: ChatCompletionTool[] = [
   {
     type: 'function',
     function: {
+      name: 'prioritize_failures',
+      description: 'Rank every failing control in the uploaded assessment so the user knows what to fix first: quick wins (ScubaGear near misses that need only a config change), BOD 25-01 SHALL controls, other SHALL controls, then SHOULD, plus errored checks, manual items and controls from an older ScubaGear release. Use for "what should I fix first", "summarize my failures", "give me a remediation plan", or "what are my biggest risks".',
+      parameters: {
+        type: 'object',
+        properties: {
+          product: { type: 'string', description: 'Optional product key to focus on, e.g. AAD, EXO, SECURITYSUITE.' },
+          limitPerTier: { type: 'number', description: 'Max controls listed per tier (default 15).' },
+        },
+        required: [],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'analyze_exclusions',
       description: 'Analyse all exclusion data from the ScubaGear scan: approved CapExclusions per control, AnnotatePolicy/OmitPolicy configs, Conditional Access Policy ExcludeUsers/ExcludeGroups, and cross-referenced analysis showing which CAP exclusions are approved vs unapproved. Use when the user asks about exclusions, or when analysing CAP-related control failures to identify if unapproved exclusions are causing failures.',
       parameters: {
@@ -392,6 +394,12 @@ export const TOOLS: ChatCompletionTool[] = [
 // ── Shared state for current request's control details ──────
 let _currentControlDetails: Record<string, { status: string; reportDetails: string; actualValue?: string }> = {};
 let _currentExclusionContext: ExclusionContext | null = null;
+
+/** Replaces the per-request scan data the tools read. Used by tests; the chat handler sets it per request. */
+export function setScanState(details: typeof _currentControlDetails, exclusions: ExclusionContext | null): void {
+  _currentControlDetails = details;
+  _currentExclusionContext = exclusions;
+}
 
 // ── Tool dispatcher (calls local functions instead of MCP) ──
 export async function dispatchToolCall(name: string, args: Record<string, unknown>): Promise<string> {
@@ -532,7 +540,12 @@ export async function dispatchToolCall(name: string, args: Record<string, unknow
       case 'analyze_scan_result': {
         const controlId = args.controlId as string;
         const baseline = getControlById(controlId);
-        const scanData = _currentControlDetails[controlId];
+        // Tolerate a stale version suffix: a report from an older ScubaGear keys the control by its old ID.
+        const stem = (id: string) => id.replace(/v\d+$/i, '').toLowerCase();
+        const scanKey = _currentControlDetails[controlId]
+          ? controlId
+          : Object.keys(_currentControlDetails).find((k) => stem(k) === stem(controlId));
+        const scanData = scanKey ? _currentControlDetails[scanKey] : undefined;
 
         let output = '';
 
@@ -598,30 +611,9 @@ export async function dispatchToolCall(name: string, args: Record<string, unknow
             output += `No approved exclusions configured for ${controlId}.\n\n`;
           }
 
-          const capsWithExclusions = _currentExclusionContext.exclusionAnalysis.filter(
-            (a) => a.excludedUsers.length > 0 || a.excludedGroups.length > 0
-          );
-          if (capsWithExclusions.length > 0) {
-            output += `### Conditional Access Policy Exclusion Analysis\n`;
-            for (const analysis of capsWithExclusions) {
-              const unapprovedUsers = analysis.excludedUsers.filter((u) => !u.approved);
-              const unapprovedGroups = analysis.excludedGroups.filter((g) => !g.approved);
-              const approvedUsers = analysis.excludedUsers.filter((u) => u.approved);
-              const approvedGroups = analysis.excludedGroups.filter((g) => g.approved);
-
-              output += `\n**Policy:** ${analysis.policyName} (State: ${analysis.policyState})\n`;
-              if (approvedUsers.length > 0)
-                output += `- ✅ Approved excluded users: ${approvedUsers.map((u) => u.displayName).join(', ')}\n`;
-              if (unapprovedUsers.length > 0)
-                output += `- ⚠️ **Unapproved excluded users:** ${unapprovedUsers.map((u) => u.displayName || u.id).join(', ')}\n`;
-              if (approvedGroups.length > 0)
-                output += `- ✅ Approved excluded groups: ${approvedGroups.map((g) => g.id).join(', ')}\n`;
-              if (unapprovedGroups.length > 0)
-                output += `- ⚠️ **Unapproved excluded groups:** ${unapprovedGroups.map((g) => g.id).join(', ')}\n`;
-              if (unapprovedUsers.length === 0 && unapprovedGroups.length === 0)
-                output += `- ✅ All exclusions are approved\n`;
-            }
-          }
+          // Policy evidence, near-miss decision, config snippet and identity cross-reference
+          const capAnalysis = buildCapAnalysis(controlId, _currentExclusionContext, _currentControlDetails);
+          if (capAnalysis) output += `${capAnalysis}\n`;
 
           const annotated = _currentExclusionContext.annotatedPolicies.find(
             (a) => a.controlId === controlId
@@ -638,7 +630,30 @@ export async function dispatchToolCall(name: string, args: Record<string, unknow
           }
         }
 
+        // For failing automated checks, show the logic ScubaGear actually evaluated so the cause is
+        // confirmed rather than inferred (this matters most for near misses).
+        if (scanData && /^(fail|warning)$/i.test(scanData.status) && baseline?.checkType === 'Automated') {
+          const rego = await getRegoExcerpt(baseline.id);
+          if (rego) {
+            const nearMiss = parseNearMisses(scanData.reportDetails).length > 0;
+            output += '\n---\n\n## Rego ScubaGear evaluated\n';
+            output += nearMiss
+              ? 'ScubaGear reported a near miss. Use this rule to confirm what a policy must satisfy besides the approved exclusions, and say so if approving the exclusion alone would not make the control pass.\n'
+              : 'Use this rule to name the exact condition that was not met. Summarise it in plain English; do not paste it unless the user asks.\n';
+            output += `\`\`\`rego\n${rego}\n\`\`\`\n`;
+          }
+        }
+
         return output;
+      }
+      case 'prioritize_failures': {
+        if (Object.keys(_currentControlDetails).length === 0) {
+          return 'No assessment data available. The user has not uploaded ScubaGear results.';
+        }
+        return prioritizeFailures(_currentControlDetails, {
+          product: args.product as string | undefined,
+          limitPerTier: args.limitPerTier as number | undefined,
+        });
       }
       case 'analyze_exclusions': {
         if (!_currentExclusionContext) {
@@ -743,6 +758,71 @@ export async function dispatchToolCall(name: string, args: Record<string, unknow
 }
 
 // ── Constants ───────────────────────────────────────────────
+const MAX_PREFETCH_CHARS = 40_000;
+
+/**
+ * For questions that look like failure clarification (why is it failing, how do I pass or fix it),
+ * runs the diagnosis tools up front so the answer does not depend on the model choosing the right
+ * tool. Other questions (meaning, licensing, status, comparisons, baseline changes) get nothing
+ * pre-fetched, so the model answers what was actually asked. Returns an empty string for those.
+ */
+export async function buildPrefetch(
+  message: string,
+  history: Array<{ role: string; content: string }> | null,
+): Promise<string> {
+  const scans = _currentControlDetails;
+  if (Object.keys(scans).length === 0) return '';
+  if (!DIAGNOSIS_INTENT_RE.test(message) && !FAILURE_INTENT_RE.test(message)) return '';
+
+  let refs = extractControlReferences(message, scans);
+
+  // A bare number ("check 3.1") that matches several products is settled by what was discussed
+  // recently; if the conversation does not settle it, the candidates are listed so the user can pick.
+  if (refs.candidates.length > 0 && history?.length) {
+    for (const m of [...history.slice(-6)].reverse()) {
+      const mentioned = extractControlReferences(m.content ?? '', scans).ids.map((id) => extractProduct(id));
+      const pick = refs.candidates.filter((c) => mentioned.includes(extractProduct(c)));
+      if (pick.length === 1) {
+        refs = { ids: [pick[0]], candidates: [] };
+        break;
+      }
+    }
+  }
+
+  // Follow-ups such as "how do I fix it?" refer to whatever was discussed last.
+  if (refs.ids.length === 0 && refs.candidates.length === 0 && history?.length && message.length < 200 && /\b(it|this|that|those|them|same)\b/i.test(message)) {
+    for (const m of [...history.slice(-4)].reverse()) {
+      const found = extractControlReferences(m.content ?? '', scans);
+      if (found.ids.length > 0) {
+        refs = found;
+        break;
+      }
+    }
+  }
+
+  const sections: string[] = [];
+  for (const id of refs.ids) sections.push(await dispatchToolCall('analyze_scan_result', { controlId: id }));
+  if (refs.candidates.length > 0) {
+    const list = refs.candidates.map((id) => {
+      const b = getControlById(id);
+      return `- **${id}** [${scans[id]?.status ?? 'not in report'}] ${b?.title ?? ''}`.trim();
+    });
+    sections.push(
+      `## Which control?\nThe question gave only a number, and it matches failing controls in more than one product:\n${list.join('\n')}\n` +
+        'Ask the user which one they mean in one short question that lists these. If they asked about all of them, answer each briefly.',
+    );
+  }
+  if (refs.ids.length === 0 && refs.candidates.length === 0 && FAILURE_INTENT_RE.test(message)) {
+    sections.push(prioritizeFailures(scans, { limitPerTier: 8 }));
+  }
+  if (sections.length === 0) return '';
+
+  const text =
+    'Diagnosis pre-fetched because this question looks like failure clarification (the same output analyze_scan_result / prioritize_failures returns). ' +
+    'It is data, not a template: use what is relevant to what the user actually asked, and if they asked something else, answer that instead. ' +
+    `Call tools for anything missing.\n\n${sections.join('\n\n=====\n\n')}`;
+  return text.length > MAX_PREFETCH_CHARS ? `${text.slice(0, MAX_PREFETCH_CHARS)}\n\n[Truncated]` : text;
+}
 const MAX_TOOL_ROUNDS = 6;
 const MAX_MESSAGE_LENGTH = 4000;
 const MAX_CONTEXT_LENGTH = 100_000;
@@ -878,9 +958,14 @@ app.http('chat', {
         context.log(`Chat history: injected ${trimmed.length} messages`);
       }
 
-      messages.push({ role: 'user', content: message });
+      // Run the diagnosis for the controls (or failures) the question is about, whatever its wording.
+      const prefetch = await buildPrefetch(message, Array.isArray(historyArray) ? historyArray : null);
+      if (prefetch) {
+        messages.push({ role: 'system', content: prefetch });
+        context.log(`Pre-fetched diagnosis (${prefetch.length} chars)`);
+      }
 
-      // Agentic loop
+      messages.push({ role: 'user', content: message });
       const { client: ai, model } = getChatClient();
       for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
         const completion = await ai.chat.completions.create({

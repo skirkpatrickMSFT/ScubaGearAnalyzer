@@ -193,6 +193,10 @@ export interface ConditionalAccessPolicySummary {
   signInRiskLevels: string[];
   /** Whether this policy targets device code flow */
   hasDeviceCodeFlowCondition: boolean;
+  /** Applications the policy targets ("All", app IDs, or "Office365") */
+  includeApps: string[];
+  /** Number of applications explicitly excluded */
+  excludeAppCount: number;
   /** Computed category for control-to-policy mapping */
   category: CAPCategory;
 }

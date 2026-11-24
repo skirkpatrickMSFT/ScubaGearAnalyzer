@@ -259,7 +259,7 @@ function classifyPolicy(cap: ConditionalAccessPolicySummary): CAPCategory {
  * Map a ScubaGear MS.AAD.3.x control to the CAP categories it evaluates.
  * Returns null for non-CAP-based controls (3.3, 3.4, 3.5).
  */
-function getRelevantCAPCategories(controlId: string): CAPCategory[] | null {
+export function getRelevantCAPCategories(controlId: string): CAPCategory[] | null {
   // Normalise to just the base control (strip version e.g. 3.1v1 → 3.1)
   const match = controlId.match(/^MS\.AAD\.3\.(\d+)/);
   if (!match) return null;
@@ -416,6 +416,7 @@ export function extractExclusionContext(data: unknown): ExclusionContext | null 
       const grantControls = p.GrantControls as Record<string, unknown> | undefined;
       const authStrength = grantControls?.AuthenticationStrength as Record<string, unknown> | undefined;
       const authFlows = conditions?.AuthenticationFlows as Record<string, unknown> | undefined;
+      const apps = conditions?.Applications as Record<string, unknown> | undefined;
 
       const capSummary: ConditionalAccessPolicySummary = {
         id: String(p.Id || ''),
@@ -440,6 +441,8 @@ export function extractExclusionContext(data: unknown): ExclusionContext | null 
           ? (conditions!.SignInRiskLevels as string[]).filter((r) => r && r.length > 0).map(String)
           : [],
         hasDeviceCodeFlowCondition: String(authFlows?.TransferMethods || '').toLowerCase().includes('devicecode'),
+        includeApps: Array.isArray(apps?.IncludeApplications) ? apps!.IncludeApplications.map(String) : [],
+        excludeAppCount: Array.isArray(apps?.ExcludeApplications) ? apps!.ExcludeApplications.length : 0,
         category: 'other', // computed below
       };
       capSummary.category = classifyPolicy(capSummary);

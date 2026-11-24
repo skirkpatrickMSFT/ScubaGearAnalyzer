@@ -1378,13 +1378,8 @@ export const BASELINE_CHANGES: BaselineChange[] = [
     "toId": "MS.AAD.3.1v1",
     "product": "AAD",
     "fields": [
-      "requirement",
       "rationale"
-    ],
-    "title": {
-      "from": "Phishing-resistant MFA SHALL be enforced for all users. The phishing-resistant methods Microsoft Entra ID certificate-based authentication (CBA), FIDO2 Security Key, Windows Hello for Business, and device-bound passkeys (in the authenticator app of choice) are the recommended authentication options since they offer forms of MFA with the least weaknesses. For federal agencies, Microsoft Entra ID CBA supports federal PIV card authentication directly to Microsoft Entra ID. If on-premises PIV authentication and federation to Microsoft Entra ID is used, enforce PIV logon via Microsoft Active Directory group policy.",
-      "to": "Phishing-resistant MFA SHALL be enforced for all users. The phishing-resistant methods of Microsoft Entra ID certificate-based authentication (CBA), FIDO2 Security Key, Windows Hello for Business, and device-bound passkeys (in the authenticator application of choice) are the recommended authentication options since they offer forms of MFA with the fewest weaknesses. For federal agencies, Microsoft Entra ID CBA supports federal PIV card authentication directly to Microsoft Entra ID. If on-premises PIV authentication and federation to Microsoft Entra ID is used, enforce PIV logon via the Microsoft Active Directory group policy."
-    }
+    ]
   },
   {
     "fromVersion": "1.8.0",

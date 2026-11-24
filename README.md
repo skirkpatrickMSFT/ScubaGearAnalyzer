@@ -241,7 +241,15 @@ ScubaGear 1.7+ fields supported: `Omitted` status, `OmittedEvaluationResult`, `I
   results map onto the current baseline. See [Baseline change tracking](#baseline-change-tracking).
 - **GPT-4o Compliance Chat** — Context-aware AI assistant with function-calling that can look up
   controls, fetch remediation steps, search Microsoft Learn, analyze Rego policy logic, and explain
-  baseline changes.
+  baseline changes. Answers lead with the verdict and evidence from your scan. For Conditional Access
+  controls it shows the relevant policies with their state and settings, surfaces ScubaGear 2.0
+  "near miss" results, lays out the decision (remove the exclusion vs. approve it in the config) with a
+  ready-to-paste `CapExclusions` snippet, and cross-references the excluded account/group GUIDs across
+  policies. Ask "what should I fix first?" for a ranked list of failures. The chat works out what each
+  question is asking: "why is it failing", "how do I pass check 3.1" and "how do I fix it?" all get the full
+  diagnosis (including the Rego ScubaGear evaluated), while questions about meaning, licensing, status,
+  comparisons or baseline changes get a direct answer. A bare number that exists in several products
+  (for example "check 3.1") is resolved from the conversation, or the chat asks which control you mean.
 
 ## API Endpoints
 

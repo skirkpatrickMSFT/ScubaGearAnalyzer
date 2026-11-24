@@ -229,11 +229,20 @@ function parseBaseline(md) {
     // Badges normally precede the policy marker but some policies place them after it.
     const indicators = parseIndicators(text.split('\n'));
     const requirement = stripMd(head.filter((l) => !BADGE_LINE_RE.test(l)).join('\n'));
+    // The first paragraph is the policy statement; later paragraphs are explanatory guidance.
+    // A trailing colon means the statement continues into a list, so keep everything then.
+    const paragraphs = head
+      .filter((l) => !BADGE_LINE_RE.test(l))
+      .join('\n')
+      .split(/\n\s*\n/)
+      .map((p) => p.trim())
+      .filter(Boolean);
+    const statement = paragraphs.length && !/:\s*$/.test(paragraphs[0]) ? stripMd(paragraphs[0]) : requirement;
     const fields = parseFields(text.slice(text.indexOf('-->') + 3));
 
     let criticality = m[2];
-    if (criticality === 'SHALL' && /\bSHALL NOT\b/.test(requirement)) criticality = 'SHALL NOT';
-    if (criticality === 'SHOULD' && /\bSHOULD NOT\b/.test(requirement)) criticality = 'SHOULD NOT';
+    if (criticality === 'SHALL' && /\bSHALL NOT\b/.test(statement)) criticality = 'SHALL NOT';
+    if (criticality === 'SHOULD' && /\bSHOULD NOT\b/.test(statement)) criticality = 'SHOULD NOT';
 
     const notes = fields
       .filter((f) => f.name === 'note' || f.name === 'notes')
@@ -244,7 +253,7 @@ function parseBaseline(md) {
       id,
       section: sectionName,
       sectionNumber: sectionNum,
-      title: requirement,
+      title: statement,
       description: requirement,
       criticality,
       rationale: stripMd(fieldValue(fields, 'rationale')),
