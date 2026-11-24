@@ -11,6 +11,7 @@ import type {
   ControlStatus,
   ScubaProduct,
   AssessmentSummary,
+  ProductSummary,
   ScubaResultsControl,
   ScubaResultsGroup,
   ExclusionContext,
@@ -27,6 +28,7 @@ import {
   PRODUCT_DISPLAY_NAMES,
   SCUBAGEAR_BASELINE_VERSION,
   canonicalizeProduct,
+  getControlById,
 } from './baseline-data.js';
 import { resolveControl, type VersionComparison } from './baseline-changes.js';
 
@@ -729,25 +731,51 @@ export function computeSummary(controls: ParsedControl[]): AssessmentSummary {
   const products = Array.from(
     new Set([...Object.keys(PRODUCT_DISPLAY_NAMES), ...controls.map((c) => c.product)]),
   );
-  const byProduct: Record<string, { total: number; pass: number; fail: number }> = {};
+  const byProduct: Record<string, ProductSummary> = {};
   for (const p of products) {
     const pControls = controls.filter((c) => c.product === p);
+    const count = (status: string) => pControls.filter((c) => c.status === status).length;
+    const failing = pControls.filter((c) => c.status === 'Fail');
+    const pass = count('Pass');
+    const warning = count('Warning');
     byProduct[p] = {
       total: pControls.length,
-      pass: pControls.filter((c) => c.status === 'Pass').length,
-      fail: pControls.filter((c) => c.status === 'Fail').length,
+      pass,
+      fail: failing.length,
+      warning,
+      manual: count('Not-Implemented') + count('3rd Party'),
+      thirdParty: count('3rd Party'),
+      omitted: count('Omitted'),
+      error: count('Error'),
+      other: pControls.length - pass - failing.length - warning,
+      requiredFail: failing.filter((c) => c.criticality.startsWith('SHALL')).length,
+      bodFail: failing.filter((c) => getControlById(c.controlId)?.bod2501 === true).length,
     };
   }
   return {
     total: controls.length,
     pass: controls.filter((c) => c.status === 'Pass').length,
     fail: controls.filter((c) => c.status === 'Fail').length,
+    warning: controls.filter((c) => c.status === 'Warning').length,
+    error: controls.filter((c) => c.status === 'Error').length,
     manual: controls.filter((c) => c.status === 'Not-Implemented').length,
     thirdParty: controls.filter((c) => c.status === '3rd Party').length,
     notImplemented: controls.filter((c) => c.status === 'Not-Implemented').length,
     omitted: controls.filter((c) => c.status === 'Omitted').length,
     byProduct,
   };
+}
+
+/** One row per product with the counts the dashboard shows; products with no controls are omitted. */
+export function buildProductBreakdown(summary: AssessmentSummary) {
+  return Object.entries(summary.byProduct)
+    .filter(([, s]) => s.total > 0)
+    .map(([product, s]) => ({
+      product,
+      displayName: PRODUCT_DISPLAY_NAMES[product] || product,
+      ...s,
+      passRate: Math.round((s.pass / s.total) * 100),
+    }));
 }
 
 const MAX_CONTEXT_CHARS = 120_000;

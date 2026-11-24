@@ -88,6 +88,25 @@ export interface ScubaResultsGroup {
 }
 
 /** Summary statistics for a set of controls */
+export interface ProductSummary {
+  total: number;
+  pass: number;
+  fail: number;
+  /** SHOULD-level failures ("Warning" in ScubaGear results). */
+  warning: number;
+  /** Needs a manual check: Not-Implemented plus 3rd Party. */
+  manual: number;
+  thirdParty: number;
+  omitted: number;
+  error: number;
+  /** Everything that is neither pass, fail nor warning (manual, 3rd party, omitted, error). */
+  other: number;
+  /** Failing controls whose criticality is SHALL / SHALL NOT. */
+  requiredFail: number;
+  /** Failing controls required by CISA BOD 25-01. */
+  bodFail: number;
+}
+
 export interface AssessmentSummary {
   total: number;
   pass: number;
@@ -96,7 +115,9 @@ export interface AssessmentSummary {
   thirdParty: number;
   notImplemented: number;
   omitted: number;
-  byProduct: Record<string, { total: number; pass: number; fail: number }>;
+  warning: number;
+  error: number;
+  byProduct: Record<string, ProductSummary>;
 }
 
 /** Chat message */

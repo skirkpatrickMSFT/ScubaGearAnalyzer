@@ -673,6 +673,8 @@
             "thirdParty": { "type": "integer", "format": "int32" },
             "notImplemented": { "type": "integer", "format": "int32" },
             "omitted": { "type": "integer", "format": "int32" },
+            "warning": { "type": "integer", "format": "int32", "description": "SHOULD-level failures (shown as Warning in ScubaGear results)" },
+            "error": { "type": "integer", "format": "int32", "description": "Checks that errored and did not evaluate" },
             "overallPassRate": { "type": "integer", "format": "int32", "description": "Pass rate percentage (0-100)" }
           }
         },
@@ -685,7 +687,15 @@
               "displayName": { "type": "string" },
               "total": { "type": "integer", "format": "int32" },
               "pass": { "type": "integer", "format": "int32" },
-              "fail": { "type": "integer", "format": "int32" },
+              "fail": { "type": "integer", "format": "int32", "description": "SHALL-level failures" },
+              "warning": { "type": "integer", "format": "int32", "description": "SHOULD-level failures" },
+              "manual": { "type": "integer", "format": "int32", "description": "Needs a manual check (Not-Implemented plus 3rd Party)" },
+              "thirdParty": { "type": "integer", "format": "int32" },
+              "omitted": { "type": "integer", "format": "int32" },
+              "error": { "type": "integer", "format": "int32" },
+              "other": { "type": "integer", "format": "int32", "description": "Everything that is not pass, fail or warning" },
+              "requiredFail": { "type": "integer", "format": "int32", "description": "Failing controls whose criticality is SHALL" },
+              "bodFail": { "type": "integer", "format": "int32", "description": "Failing controls required by CISA BOD 25-01" },
               "passRate": { "type": "integer", "format": "int32" }
             }
           }

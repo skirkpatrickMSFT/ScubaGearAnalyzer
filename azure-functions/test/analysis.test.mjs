@@ -12,7 +12,7 @@ import {
   parseNearMisses,
   prioritizeFailures,
 } from '../dist/src/shared/analysis.js';
-import { extractExclusionContext } from '../dist/src/shared/scubagear-parser.js';
+import { buildProductBreakdown, computeSummary, detectAndParse, extractExclusionContext } from '../dist/src/shared/scubagear-parser.js';
 import { getControlById } from '../dist/src/shared/baseline-data.js';
 
 const USER = '11111111-2222-3333-4444-555555555555';
@@ -146,6 +146,48 @@ test('control titles are the policy statement; guidance lives in the description
   const c = getControlById('MS.AAD.3.1v1');
   assert.equal(c.title, 'Phishing-resistant MFA SHALL be enforced for all users.');
   assert.ok(c.description.length > c.title.length, 'explanatory paragraphs are kept in the description');
+});
+
+// ── Dashboard numbers ───────────────────────────────────────
+
+test('dashboard numbers add up per product and expose warnings and required failures', () => {
+  const ctl = (id, result, criticality) => ({ 'Control ID': id, Result: result, Criticality: criticality, Details: 'd' });
+  const { controls } = detectAndParse({
+    Results: {
+      AAD: [{
+        Controls: [
+          ctl('MS.AAD.3.1v1', 'Fail', 'Shall'),
+          ctl('MS.AAD.3.2v2', 'Pass', 'Shall'),
+          ctl('MS.AAD.3.7v1', 'Warning', 'Should'),
+          ctl('MS.AAD.3.3v2', 'Manual', 'Shall'),
+          ctl('MS.AAD.2.2v1', 'N/A', 'Should'),
+          ctl('MS.AAD.3.5v2', 'Omitted', 'Shall'),
+        ],
+      }],
+      EXO: [{ Controls: [ctl('MS.EXO.4.1v1', 'Fail', 'Shall')] }],
+    },
+  });
+
+  const summary = computeSummary(controls);
+  assert.equal(summary.warning, 1, 'SHOULD-level failures are counted instead of disappearing');
+  assert.equal(summary.total, 7);
+
+  const aad = summary.byProduct.AAD;
+  assert.equal(aad.total, 6);
+  assert.deepEqual(
+    { pass: aad.pass, fail: aad.fail, warning: aad.warning, manual: aad.manual, thirdParty: aad.thirdParty, omitted: aad.omitted, other: aad.other },
+    { pass: 1, fail: 1, warning: 1, manual: 2, thirdParty: 1, omitted: 1, other: 3 },
+  );
+  assert.equal(aad.pass + aad.fail + aad.warning + aad.other, aad.total, 'every control is accounted for');
+  assert.equal(aad.requiredFail, 1);
+  assert.equal(aad.bodFail, 1, 'MS.AAD.3.1v1 is required by BOD 25-01');
+
+  const rows = buildProductBreakdown(summary);
+  assert.deepEqual(rows.map((r) => r.product).sort(), ['AAD', 'EXO'], 'products with no controls are left out');
+  const row = rows.find((r) => r.product === 'AAD');
+  assert.equal(row.displayName, 'Microsoft Entra ID');
+  assert.equal(row.passRate, 17);
+  assert.equal(row.requiredFail, 1);
 });
 
 // ── Understanding the question ──────────────────────────────

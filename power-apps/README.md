@@ -68,6 +68,79 @@ connector:
 
 ---
 
+## UPGRADE: Add per-product numbers to an existing dashboard
+
+Use this if you already have the app (imported, or built earlier) and want the dashboard to show real numbers for
+each product instead of only a colored bar. It is self-contained: you do **not** need the numbered steps in
+Option B below, which are for building the app from nothing.
+
+**Before you start** — these three things must be done first or the new fields will be blank:
+1. The function app is published with the version that returns the new per-product counts.
+2. The custom connector has the current `openapi.json` (Swagger editor → paste → **Update connector**).
+3. In the app's **Data** panel, remove **APIScubaGearAnalyzer** and add it again so the app picks up the new fields.
+
+**How to enter every formula below.** Select the control in the **Tree view** (left panel), choose the property in the
+dropdown at the top left, then click in the **formula bar at the top of Studio**, press **Ctrl+A**, and paste. Paste only
+the formula: no backticks, no leading `=`. Do not use the Properties pane on the right; it stores what you type as plain
+text. `ThisItem` only works for controls that sit **inside the gallery row**, so create or paste those controls while
+the gallery's first row is selected and check in the Tree view that they are nested under the gallery.
+
+### Part 1 — Show numbers on each product row
+
+On `scrUpload`, select the gallery that lists the products (called `galProducts` in this guide).
+
+1. Gallery properties: **Items** `colProducts`, **TemplateSize** `84`, **Width** `820`, **Height** `190`.
+2. Inside the first row, keep (or create) the name label and set its **Text** to `ThisItem.displayName`. Delete any old
+   single bar rectangle; the new bar replaces it.
+3. Add these controls inside the row (name, position, then the formula):
+
+   | Control | Type | X / Y / W / H | Property and formula |
+   |---|---|---|---|
+   | `lblProdScore` | Label | 400 / 4 / 410 / 26 | **Text**: `ThisItem.pass & " of " & ThisItem.total & " passing  (" & ThisItem.passRate & "%)"` and **Align** `Align.Right` |
+   | `recProdTrack` | Rectangle | 10 / 34 / 800 / 16 | **Fill**: `RGBA(237, 235, 233, 1)` |
+   | `recProdPass` | Rectangle | 10 / 34 / (formula) / 16 | **Width**: `ThisItem.pass / Max(ThisItem.total, 1) * 800`, **Fill**: `RGBA(16, 124, 16, 1)` |
+   | `recProdFail` | Rectangle | (formula) / 34 / (formula) / 16 | **X**: `recProdPass.X + recProdPass.Width`, **Width**: `ThisItem.fail / Max(ThisItem.total, 1) * 800`, **Fill**: `RGBA(209, 52, 56, 1)` |
+   | `recProdWarn` | Rectangle | (formula) / 34 / (formula) / 16 | **X**: `recProdFail.X + recProdFail.Width`, **Width**: `ThisItem.warning / Max(ThisItem.total, 1) * 800`, **Fill**: `RGBA(255, 140, 0, 1)` |
+   | `recProdOther` | Rectangle | (formula) / 34 / (formula) / 16 | **X**: `recProdWarn.X + recProdWarn.Width`, **Width**: `ThisItem.other / Max(ThisItem.total, 1) * 800`, **Fill**: `RGBA(138, 136, 134, 1)` |
+   | `lblProdDetail` | Label | 10 / 56 / 800 / 24 | **Text**: see the block below, **Size** `11` |
+
+   `lblProdDetail` **Text**:
+   ```
+   Concatenate("❌ ", ThisItem.fail, " fail    ⚠️ ", ThisItem.warning, " warning    📋 ", ThisItem.other, " manual / n/a    •    Required (SHALL) failing: ", ThisItem.requiredFail, If(ThisItem.bodFail > 0, Concatenate("  (BOD 25-01: ", ThisItem.bodFail, ")"), ""))
+   ```
+   `lblProdScore` **Color** (optional):
+   ```
+   If(ThisItem.passRate >= 80, RGBA(16, 124, 16, 1), ThisItem.passRate >= 50, RGBA(255, 140, 0, 1), RGBA(209, 52, 56, 1))
+   ```
+
+4. With no report loaded the numbers are blank. That is normal in the designer; it means the formulas are valid.
+
+### Part 2 — Make the top cards add up
+
+Your top row of cards (Total, Pass, Fail, Manual, Pass Rate) leaves out warnings and third-party controls, so a
+109-control report shows only 67 accounted for. Two edits, no new controls:
+
+1. Select `lblCardManualValue`, property **Text**:
+   ```
+   If(varIsLoaded, Text(varResults.summary.manual + varResults.summary.thirdParty), "—")
+   ```
+2. The small **Pass Rate** card repeats the big Overall Pass Rate gauge, so reuse it as **Warning**:
+   - `lblCardRateTitle`: **Text** `"Warning"` (type it with the quotes) and **Color** `RGBA(202, 80, 16, 1)`
+   - `lblCardRateValue`: **Text**
+     ```
+     If(varIsLoaded, Text(varResults.summary.warning), "—")
+     ```
+     and **Color** `RGBA(202, 80, 16, 1)`
+
+### Part 3 — Save and test
+
+Press **Ctrl+S**, then **F5**, paste your report and click **Analyse Results**. The product list is only filled when you
+click **Analyse Results**, so run it again after any change. Each row should read like
+`N of M passing (P%)` with a detail line of fail / warning / manual counts, and on the cards
+Pass + Fail + Manual + Warning should equal Total.
+
+---
+
 ## OPTION B: Build from Scratch
 
 Step-by-step build guide. Every click, every property, every formula.
@@ -281,29 +354,115 @@ Set(varIsLoaded, true)
 
 ### Step 11 — Add the Product Breakdown Gallery
 
+Each product gets a row with its numbers, not just a color: how many controls pass, fail, warn or need a
+manual check, how many *required* (SHALL) controls are failing, and a stacked bar that shows the split.
+
+> **Pasting formulas:** inline formulas below are wrapped in backticks, which are only Markdown formatting.
+> Paste what is **between** the backticks (no backticks, no leading `=`), or you will get the error
+> *"Unexpected characters. Characters are used in the formula in an unexpected way."*
+
 1. **Insert** → search **Blank vertical gallery** → click to add
 2. Select the gallery. Set properties:
    - **Items**: `colProducts`
-   - **X**: `20`, **Y**: `560`, **Width**: `800`, **Height**: `180`
-   - **TemplateSize**: `60`
+   - **X**: `20`, **Y**: `560`, **Width**: `820`, **Height**: `190`
+   - **TemplateSize**: `84`
    - Rename to `galProducts`
 
 3. Click **inside** the first row of the gallery (you're now editing the template)
 
-4. **Insert** → **Text label** (inside the gallery template) → set:
+4. **Insert** → **Text label** (inside the template), rename `lblProdName`:
    - **Text**: `ThisItem.displayName`
-   - **X**: `10`, **Y**: `5`, **Width**: `250`, **Height**: `25`
-   - **FontWeight**: `FontWeight.Bold`, **Size**: `13`
+   - **X**: `10`, **Y**: `4`, **Width**: `380`, **Height**: `26`
+   - **FontWeight**: `FontWeight.Bold`, **Size**: `14`
 
-5. **Insert** → **Rectangle** (inside the gallery template) → set:
-   - **X**: `270`, **Y**: `10`, **Height**: `20`
-   - **Width**: `(ThisItem.passRate / 100) * 400`
-   - **Fill**: `If(ThisItem.passRate >= 80, RGBA(16, 124, 16, 1), ThisItem.passRate >= 50, RGBA(255, 140, 0, 1), RGBA(209, 52, 56, 1))`
+5. **Insert** → **Text label**, rename `lblProdScore`:
+   - **Text**:
+     ```
+     ThisItem.pass & " of " & ThisItem.total & " passing  (" & ThisItem.passRate & "%)"
+     ```
+   - **X**: `400`, **Y**: `4`, **Width**: `410`, **Height**: `26`
+   - **Align**: `Align.Right`, **Size**: `13`, **FontWeight**: `FontWeight.Semibold`
+   - **Color**:
+     ```
+     If(ThisItem.passRate >= 80, RGBA(16, 124, 16, 1), ThisItem.passRate >= 50, RGBA(255, 140, 0, 1), RGBA(209, 52, 56, 1))
+     ```
 
-6. **Insert** → **Text label** (inside the gallery template) → set:
-   - **Text**: `ThisItem.pass & " / " & ThisItem.total & " (" & ThisItem.passRate & "%)"  `
-   - **X**: `270`, **Y**: `32`, **Width**: `300`, **Height**: `22`
-   - **Size**: `11`, **Color**: `RGBA(169, 169, 169, 1)`
+6. **Insert** → **Rectangle**, rename `recProdTrack` (the empty bar, so a product with nothing passing still shows a bar):
+   - **X**: `10`, **Y**: `34`, **Width**: `800`, **Height**: `16`
+   - **Fill**: `RGBA(237, 235, 233, 1)`
+
+7. **Insert** four more **Rectangles** (all **Y**: `34`, **Height**: `16`). Each starts where the previous one ends:
+
+   | Name | X | Width | Fill |
+   |------|---|-------|------|
+   | `recProdPass` | `10` | `ThisItem.pass / Max(ThisItem.total, 1) * 800` | `RGBA(16, 124, 16, 1)` (green) |
+   | `recProdFail` | `recProdPass.X + recProdPass.Width` | `ThisItem.fail / Max(ThisItem.total, 1) * 800` | `RGBA(209, 52, 56, 1)` (red) |
+   | `recProdWarn` | `recProdFail.X + recProdFail.Width` | `ThisItem.warning / Max(ThisItem.total, 1) * 800` | `RGBA(255, 140, 0, 1)` (orange) |
+   | `recProdOther` | `recProdWarn.X + recProdWarn.Width` | `ThisItem.other / Max(ThisItem.total, 1) * 800` | `RGBA(138, 136, 134, 1)` (grey) |
+
+   > `Max(ThisItem.total, 1)` avoids a *division by zero* error, which Studio shows whenever the product list is
+   > empty (before you analyse a report) or a product has no controls.
+
+8. **Insert** → **Text label**, rename `lblProdDetail`:
+   - **Text**:
+     ```
+     Concatenate("❌ ", ThisItem.fail, " fail    ⚠️ ", ThisItem.warning, " warning    📋 ", ThisItem.other, " manual / n/a    •    Required (SHALL) failing: ", ThisItem.requiredFail, If(ThisItem.bodFail > 0, Concatenate("  (BOD 25-01: ", ThisItem.bodFail, ")"), ""))
+     ```
+     (Enter this in the **formula bar at the top** of Studio, not in the Properties pane. If the label shows the formula text instead of numbers, the formula went in as plain text.)
+   - **X**: `10`, **Y**: `56`, **Width**: `800`, **Height**: `24`
+   - **Size**: `11`, **Color**: `RGBA(96, 94, 92, 1)`
+
+9. *(Optional)* **Tap a product to see its controls.** Select `galProducts` and set **OnSelect**:
+   ```
+   Set(varSelectedProduct, ThisItem.product);
+   Set(varSelectedStatus, "All");
+   ClearCollect(colFilteredControls, Filter(colControls, product = ThisItem.product));
+   Navigate(scrControls)
+   ```
+   Then on `scrControls`, set `drpProduct`'s **Default** to `If(IsBlank(varSelectedProduct), "All", varSelectedProduct)` so the dropdown shows the product you came from.
+
+> **Reading the row:** the bar is green for passing, red for failing SHALL controls, orange for SHOULD
+> warnings, and grey for manual, third-party or omitted controls. "Required failing" is the number that
+> matters most: SHALL controls are the ones CISA's BOD 25-01 requires.
+
+### Step 11a — Make the summary cards add up
+
+*(Already built the app? Use the **UPGRADE** section above instead.)*
+
+The row of cards (Total, Pass, Fail, Manual, Pass Rate) leaves out SHOULD-level failures ("warnings") and counts
+only some manual controls, so a report can show Total 109 with only 67 accounted for. You do not need to add any
+cards: the **Pass Rate** card repeats the big **Overall Pass Rate** gauge, so reuse it as a **Warning** card.
+
+Do each edit in the **formula bar at the top of Studio**: pick the control in the **Tree view**, pick the property
+in the dropdown at the top left, press **Ctrl+A** in the formula bar, and paste (no `=`, no backticks).
+
+1. **Manual card — count third-party controls too.** Select `lblCardManualValue`, property **Text**:
+   ```
+   If(varIsLoaded, Text(varResults.summary.manual + varResults.summary.thirdParty), "—")
+   ```
+2. **Pass Rate card → Warning card.**
+   - Select `lblCardRateTitle`, property **Text**: `"Warning"` (type it with the quotes), and **Color**:
+     ```
+     RGBA(202, 80, 16, 1)
+     ```
+   - Select `lblCardRateValue`, property **Text**:
+     ```
+     If(varIsLoaded, Text(varResults.summary.warning), "—")
+     ```
+     and property **Color** (replace the existing formula):
+     ```
+     RGBA(202, 80, 16, 1)
+     ```
+3. Leave **Total**, **Pass** and **Fail** as they are. Fail is the SHALL-level failures.
+4. Save (**Ctrl+S**), press **F5**, and run **Analyse Results**.
+
+The cards now read Pass + Fail + Manual + Warning = Total. For a 109-control report that is
+33 + 34 + 9 + 33 = 109. (Controls that were omitted or errored are the only ones not shown, and they are usually 0.)
+The overall pass rate is still shown by the big gauge.
+
+> The **Warning** card reads `summary.warning`, which is a field the function now returns. If it shows blank or a
+> formula error, the connector has not been refreshed yet: remove and re-add **APIScubaGearAnalyzer** in the **Data**
+> panel, then run **Analyse Results** again.
 
 ### Step 12 — Add Navigation Buttons
 

@@ -10,7 +10,7 @@
  */
 
 import { app, HttpRequest, HttpResponseInit, InvocationContext } from '@azure/functions';
-import { detectAndParse, computeSummary, buildChatContext, extractExclusionContext, getControlExclusionNote, detectReportVersion, annotateBaselineStatus, PRODUCT_DISPLAY_NAMES } from '../shared/scubagear-parser.js';
+import { detectAndParse, computeSummary, buildChatContext, buildProductBreakdown, extractExclusionContext, getControlExclusionNote, detectReportVersion, annotateBaselineStatus, PRODUCT_DISPLAY_NAMES } from '../shared/scubagear-parser.js';
 import { compareToBaseline } from '../shared/baseline-changes.js';
 import type { ScubaProduct } from '../shared/types.js';
 
@@ -49,18 +49,7 @@ app.http('parse-results', {
       const chatContext = buildChatContext(controls, exclusionContext, versionInfo);
 
       // Build product breakdown for Power Apps dashboard
-      const productBreakdown = Object.keys(summary.byProduct)
-        .filter((p) => summary.byProduct[p].total > 0)
-        .map((p) => ({
-          product: p,
-          displayName: PRODUCT_DISPLAY_NAMES[p] || p,
-          total: summary.byProduct[p].total,
-          pass: summary.byProduct[p].pass,
-          fail: summary.byProduct[p].fail,
-          passRate: summary.byProduct[p].total > 0
-            ? Math.round((summary.byProduct[p].pass / summary.byProduct[p].total) * 100)
-            : 0,
-        }));
+      const productBreakdown = buildProductBreakdown(summary);
 
       // Build controls list for Power Apps gallery/table
       const controlsList = controls.map((c) => {
@@ -102,6 +91,8 @@ app.http('parse-results', {
             thirdParty: summary.thirdParty,
             notImplemented: summary.notImplemented,
             omitted: summary.omitted,
+            warning: summary.warning,
+            error: summary.error,
             overallPassRate: summary.total > 0
               ? Math.round((summary.pass / summary.total) * 100)
               : 0,
